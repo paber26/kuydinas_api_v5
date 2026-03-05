@@ -7,7 +7,9 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://127.0.0.1:5173',
+        'https://adminli.kuydinas.id/',
+        'https://userli.kuydinas.id/',
+        
     ],
 
     'allowed_headers' => ['*'],
