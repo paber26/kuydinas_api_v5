@@ -9,9 +9,15 @@ use App\Models\TryoutResult;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class TryoutController extends Controller
 {
+
+    /* ===============================
+       LIST TRYOUT
+    ================================= */
+
     public function index()
     {
         return response()->json([
@@ -20,13 +26,25 @@ class TryoutController extends Controller
         ]);
     }
 
+
+    /* ===============================
+       DETAIL TRYOUT + SOAL
+    ================================= */
+
     public function show($id)
-    {
-        return response()->json([
-            'status' => true,
-            'data' => Tryout::with('soals')->findOrFail($id)
-        ]);
-    }
+{
+    $tryout = Tryout::with('soals')->findOrFail($id);
+
+    return response()->json([
+        'status' => true,
+        'data' => $tryout
+    ]);
+}
+
+
+    /* ===============================
+       CREATE TRYOUT
+    ================================= */
 
     public function store(Request $request)
     {
@@ -60,7 +78,10 @@ class TryoutController extends Controller
         ], 201);
     }
 
-    /* ================= ATTACH ================= */
+
+    /* ===============================
+       ATTACH SOAL
+    ================================= */
 
     public function attachSoal(Request $request, $id)
     {
@@ -104,7 +125,17 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        $tryout->soals()->attach($soal->id);
+        /* hitung urutan soal */
+
+        $lastOrder = DB::table('tryout_soal')
+            ->where('tryout_id', $id)
+            ->max('urutan_soal');
+
+        $nextOrder = $lastOrder ? $lastOrder + 1 : 1;
+
+        $tryout->soals()->attach($soal->id, [
+            'urutan_soal' => $nextOrder
+        ]);
 
         return response()->json([
             'status' => true,
@@ -112,7 +143,10 @@ class TryoutController extends Controller
         ]);
     }
 
-    /* ================= DETACH ================= */
+
+    /* ===============================
+       DETACH SOAL
+    ================================= */
 
     public function detachSoal($id, $soalId)
     {
@@ -127,13 +161,37 @@ class TryoutController extends Controller
 
         $tryout->soals()->detach($soalId);
 
+        /* reorder ulang */
+
+        $soals = DB::table('tryout_soal')
+            ->where('tryout_id', $id)
+            ->orderBy('urutan_soal')
+            ->get();
+
+        $order = 1;
+
+        foreach ($soals as $item) {
+
+            DB::table('tryout_soal')
+                ->where('tryout_id', $id)
+                ->where('soal_id', $item->soal_id)
+                ->update([
+                    'urutan_soal' => $order
+                ]);
+
+            $order++;
+        }
+
         return response()->json([
             'status' => true,
             'message' => 'Soal berhasil dihapus'
         ]);
     }
 
-    /* ================= PUBLISH ================= */
+
+    /* ===============================
+       PUBLISH TRYOUT
+    ================================= */
 
     public function publish($id)
     {
@@ -154,20 +212,30 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        $tryout->update(['status' => 'publish']);
+        $tryout->update([
+            'status' => 'publish'
+        ]);
 
         return response()->json([
             'status' => true,
             'message' => 'Tryout berhasil dipublish'
         ]);
     }
-    /* ================= START TRYOUT ================= */
+
+
+    /* ===============================
+       START TRYOUT
+    ================================= */
 
     public function start(Request $request, $id)
     {
         $user = $request->user();
 
-        $tryout = Tryout::findOrFail($id);
+        $tryout = Tryout::with([
+            'soals' => function ($q) {
+                $q->orderBy('pivot_urutan_soal');
+            }
+        ])->findOrFail($id);
 
         $session = TryoutResult::firstOrCreate(
             [
@@ -189,12 +257,16 @@ class TryoutController extends Controller
             'data' => [
                 'started_at' => $session->started_at,
                 'end_time' => $endTime,
-                'duration' => $tryout->duration
+                'duration' => $tryout->duration,
+                'questions' => $tryout->soals
             ]
         ]);
     }
 
-    /* ================= AUTO SAVE ================= */
+
+    /* ===============================
+       AUTOSAVE
+    ================================= */
 
     public function autosave(Request $request, $id)
     {
@@ -216,7 +288,10 @@ class TryoutController extends Controller
         ]);
     }
 
-    /* ================= REMAINING TIME ================= */
+
+    /* ===============================
+       REMAINING TIME
+    ================================= */
 
     public function remainingTime(Request $request, $id)
     {
@@ -239,13 +314,20 @@ class TryoutController extends Controller
         ]);
     }
 
-    /* ================= SUBMIT TRYOUT ================= */
+
+    /* ===============================
+       SUBMIT TRYOUT
+    ================================= */
 
     public function submit(Request $request, $id)
     {
         $user = $request->user();
 
-        $tryout = Tryout::with('soals')->findOrFail($id);
+        $tryout = Tryout::with([
+            'soals' => function ($q) {
+                $q->orderBy('pivot_urutan_soal');
+            }
+        ])->findOrFail($id);
 
         $request->validate([
             'answers' => 'required|array'
@@ -254,58 +336,32 @@ class TryoutController extends Controller
         $answers = $request->answers;
 
         $score = 0;
-        $detail = [];
-
-        $categoryScore = [
-            'TWK' => 0,
-            'TIU' => 0,
-            'TKP' => 0
-        ];
 
         foreach ($tryout->soals as $soal) {
+
             $userAnswer = $answers[$soal->id] ?? null;
-            $isCorrect = false;
 
             if ($soal->category !== 'TKP') {
 
                 if ($userAnswer && $userAnswer === $soal->correct_answer) {
                     $score++;
-                    $categoryScore[$soal->category]++;
-                    $isCorrect = true;
                 }
 
             } else {
 
-                // TKP scoring based on option score
                 if ($userAnswer) {
 
-                    $selected = collect($soal->options)->firstWhere('label', $userAnswer);
+                    $selected = collect($soal->options)
+                        ->firstWhere('label', $userAnswer);
 
                     if ($selected && isset($selected['score'])) {
 
-                        $nilai = (int) $selected['score'];
-
-                        $score += $nilai;
-                        $categoryScore['TKP'] += $nilai;
-
-                        $isCorrect = true;
+                        $score += (int) $selected['score'];
                     }
                 }
             }
-
-            $detail[] = [
-                'soal_id' => $soal->id,
-                'category' => $soal->category,
-                'question' => $soal->question,
-                'options' => $soal->options,
-                'user_answer' => $userAnswer,
-                'correct_answer' => $soal->correct_answer,
-                'explanation' => $soal->explanation,
-                'is_correct' => $isCorrect
-            ];
         }
 
-        // Simpan atau update hasil tryout user
         TryoutResult::updateOrCreate(
             [
                 'user_id' => $user->id,
@@ -316,6 +372,7 @@ class TryoutController extends Controller
                 'answers' => $answers
             ]
         );
+
         Cache::forget("ranking_tryout_{$id}");
 
         return response()->json([
@@ -328,30 +385,64 @@ class TryoutController extends Controller
     }
 
 
-    /* ================= UPDATE TRYOUT TARGET ================= */
+/* ===============================
+   DELETE TRYOUT
+================================= */
 
-public function update(Request $request, $id)
+public function destroy($id)
 {
     $tryout = Tryout::findOrFail($id);
 
-    $request->validate([
-        'twk_count' => 'required|integer|min:0',
-        'tiu_count' => 'required|integer|min:0',
-        'tkp_count' => 'required|integer|min:0',
-    ]);
+    // hapus semua relasi soal di pivot
+    $tryout->soals()->detach();
 
-    $tryout->update([
-        'twk_target' => $request->twk_count,
-        'tiu_target' => $request->tiu_count,
-        'tkp_target' => $request->tkp_count,
-    ]);
+    // hapus tryout
+    $tryout->delete();
 
     return response()->json([
         'status' => true,
-        'message' => 'Komposisi tryout berhasil diperbarui',
-        'data' => $tryout
+        'message' => 'Tryout berhasil dihapus'
     ]);
 }
+
+
+    /* ===============================
+       UPDATE TARGET
+    ================================= */
+
+    public function update(Request $request, $id)
+    {
+        $tryout = Tryout::findOrFail($id);
+
+        if ($tryout->status === 'publish') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Tryout sudah dipublish dan tidak dapat diubah'
+            ], 422);
+        }
+
+        $request->validate([
+            'twk_count' => 'required|integer|min:0',
+            'tiu_count' => 'required|integer|min:0',
+            'tkp_count' => 'required|integer|min:0',
+        ]);
+
+        $tryout->update([
+            'twk_target' => $request->twk_count,
+            'tiu_target' => $request->tiu_count,
+            'tkp_target' => $request->tkp_count,
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Komposisi tryout berhasil diperbarui',
+            'data' => $tryout
+        ]);
+    }
+
+/* ===============================
+   REORDER SOAL
+================================= */
 
 public function reorder(Request $request, $id)
 {
@@ -361,12 +452,15 @@ public function reorder(Request $request, $id)
 
     foreach ($request->orders as $soalId => $order) {
 
-        \DB::table('tryout_soal')
-            ->where('tryout_id', $id)
-            ->where('soal_id', $soalId)
+        DB::table('tryout_soal')
+            ->where([
+                'tryout_id' => $id,
+                'soal_id' => $soalId
+            ])
             ->update([
                 'urutan_soal' => $order
             ]);
+
     }
 
     return response()->json([
@@ -374,4 +468,5 @@ public function reorder(Request $request, $id)
         'message' => 'Urutan soal berhasil diperbarui'
     ]);
 }
+
 }

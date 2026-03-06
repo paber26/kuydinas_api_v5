@@ -13,18 +13,22 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
 
-    ->withMiddleware(function (Middleware $middleware): void {
+ ->withMiddleware(function (Middleware $middleware): void {
 
-        // CORS
-        $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
+    // CORS
+    $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
 
-        // Alias middleware
-        $middleware->alias([
-            'admin' => \App\Http\Middleware\AdminMiddleware::class,
-        ]);
+    // Jika belum login jangan redirect
+    $middleware->redirectGuestsTo(function () {
+        return null;
+    });
 
-    })
+    // Alias middleware
+    $middleware->alias([
+        'admin' => \App\Http\Middleware\AdminMiddleware::class,
+    ]);
 
+})
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })

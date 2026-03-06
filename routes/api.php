@@ -9,18 +9,16 @@ use App\Http\Controllers\Api\RankingController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes
-|--------------------------------------------------------------------------
-*/
-
-/*
-|--------------------------------------------------------------------------
 | AUTH ROUTES
 |--------------------------------------------------------------------------
 */
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
+
+Route::post('/admin/login', [AuthController::class, 'login']);
+Route::post('/admin/register', [AuthController::class, 'register']);
+
 
 
 /*
@@ -29,41 +27,35 @@ Route::post('/register', [AuthController::class, 'register']);
 |--------------------------------------------------------------------------
 */
 
-Route::get('/tryouts', [TryoutController::class, 'index']);
-Route::get('/tryouts/{tryout}', [TryoutController::class, 'show']);
+
 
 
 /*
 |--------------------------------------------------------------------------
-| USER ROUTES (LOGIN REQUIRED)
+| USER ROUTES
 |--------------------------------------------------------------------------
 */
 
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Logout
+   
+
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Start Tryout
     Route::post('/tryouts/{id}/start', [TryoutController::class, 'start']);
 
-    // Autosave answers
     Route::post('/tryouts/{id}/autosave', [TryoutController::class, 'autosave']);
 
-    // Submit tryout
     Route::post('/tryouts/{id}/submit', [TryoutController::class, 'submit']);
 
-    // Remaining time
     Route::get('/tryouts/{id}/remaining-time', [TryoutController::class, 'remainingTime']);
 
-    // Tryout result
     Route::get('/tryouts/{id}/result', [TryoutResultController::class, 'show']);
 
-    // User history
     Route::get('/history', [TryoutResultController::class, 'history']);
 
-    // Ranking
     Route::get('/tryouts/{id}/ranking', [RankingController::class, 'index']);
+
     Route::get('/tryouts/{id}/my-rank', [RankingController::class, 'myRank']);
 
 });
@@ -75,26 +67,45 @@ Route::middleware('auth:sanctum')->group(function () {
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:sanctum','admin'])->group(function () {
+Route::middleware(['auth:sanctum','admin'])
+->prefix('admin')
+->group(function () {
 
-    // Soal Management
+    /*
+    |--------------------------------------------------------------------------
+    | SOAL MANAGEMENT
+    |--------------------------------------------------------------------------
+    */
+
     Route::apiResource('/soal', SoalController::class);
 
-    // Tryout Management
-    Route::apiResource('/tryouts', TryoutController::class)
-        ->except(['index','show']);
+    /*
+    |--------------------------------------------------------------------------
+    | TRYOUT MANAGEMENT
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/tryouts', [TryoutController::class, 'index']);
+    
+    Route::get('/tryouts/{id}', [TryoutController::class, 'show']);
 
-    // Attach soal
+    Route::get('/tryouts', [TryoutController::class,'index']);      // list
+    Route::post('/tryouts', [TryoutController::class,'store']);     // create
+    Route::put('/tryouts/{id}', [TryoutController::class,'update']); // update
+    Route::delete('/tryouts/{id}', [TryoutController::class,'destroy']); // delete
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | TRYOUT SOAL MANAGEMENT
+    |--------------------------------------------------------------------------
+    */
+
     Route::post('/tryouts/{id}/attach', [TryoutController::class, 'attachSoal']);
 
-    Route::post('/tryouts/{id}/attach-multiple', [TryoutController::class, 'attachMultiple']);
-
-    // Detach soal
     Route::delete('/tryouts/{id}/detach/{soalId}', [TryoutController::class, 'detachSoal']);
 
-    // Publish tryout
-    Route::post('/tryouts/{id}/publish', [TryoutController::class, 'publish']);
+    Route::put('/tryouts/{id}/reorder', [TryoutController::class, 'reorder']);
 
-    Route::post('/tryouts/{id}/reorder', [TryoutController::class, 'reorder']);
+    Route::post('/tryouts/{id}/publish', [TryoutController::class, 'publish']);
 
 });
