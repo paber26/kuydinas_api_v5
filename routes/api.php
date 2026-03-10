@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\RankingController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
+use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
 
 /*
 |--------------------------------------------------------------------------
@@ -62,7 +63,9 @@ Route::prefix('admin')->group(function () {
 
 Route::middleware(['auth:sanctum','user'])->group(function () {
 
-   
+    Route::get('/tryouts', [UserTryoutController::class,'index']);
+    
+    Route::get('/tryouts/{id}', [UserTryoutController::class,'show']);
 
     Route::post('/tryouts/{id}/start', [TryoutController::class, 'start']);
 

@@ -20,9 +20,39 @@ class TryoutController extends Controller
 
     public function index()
     {
+        $tryouts = Tryout::withCount('soals')
+            ->latest()
+            ->get()
+            ->map(function ($tryout) {
+
+                $questionCount =
+                    ($tryout->twk_target ?? 0) +
+                    ($tryout->tiu_target ?? 0) +
+                    ($tryout->tkp_target ?? 0);
+
+                $data = $tryout->toArray();
+
+                // tambahan untuk frontend (PromoCard)
+                $data['subtitle'] = 'Simulasi lengkap seperti ujian asli';
+                $data['category'] = 'SKD CPNS';
+                $data['isFree'] = $tryout->type === 'free';
+                $data['questionCount'] = $questionCount;
+                $data['highlight'] = $tryout->type === 'free';
+                $data['tag'] = $tryout->type;
+                $data['level'] = 'Menengah';
+
+                $participants = TryoutResult::where('tryout_id', $tryout->id)->count();
+
+                $data['seatsLeft'] = $tryout->quota
+                    ? max($tryout->quota - $participants, 0)
+                    : null;
+
+                return $data;
+            });
+
         return response()->json([
             'status' => true,
-            'data' => Tryout::withCount('soals')->latest()->get()
+            'data' => $tryouts
         ]);
     }
 
@@ -32,14 +62,14 @@ class TryoutController extends Controller
     ================================= */
 
     public function show($id)
-{
-    $tryout = Tryout::with('soals')->findOrFail($id);
+    {
+        $tryout = Tryout::with('soals')->findOrFail($id);
 
-    return response()->json([
-        'status' => true,
-        'data' => $tryout
-    ]);
-}
+        return response()->json([
+            'status' => true,
+            'data' => $tryout
+        ]);
+    }
 
 
     /* ===============================
@@ -51,6 +81,10 @@ class TryoutController extends Controller
         $request->validate([
             'title' => 'required',
             'duration' => 'required|integer',
+            'type' => 'required|in:free,premium',
+            'quota' => 'nullable|integer|min:1',
+            'price' => 'nullable|integer|min:0',
+            'discount' => 'nullable|integer|min:0|max:100',
             'twk_count' => 'required|integer',
             'tiu_count' => 'required|integer',
             'tkp_count' => 'required|integer',
@@ -63,6 +97,10 @@ class TryoutController extends Controller
             'title' => $request->title,
             'duration' => $request->duration,
             'status' => 'draft',
+            'type' => $request->type,
+            'quota' => $request->quota,
+            'price' => $request->price ?? 0,
+            'discount' => $request->discount ?? 0,
             'twk_target' => $request->twk_count,
             'tiu_target' => $request->tiu_count,
             'tkp_target' => $request->tkp_count,
@@ -125,8 +163,6 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        /* hitung urutan soal */
-
         $lastOrder = DB::table('tryout_soal')
             ->where('tryout_id', $id)
             ->max('urutan_soal');
@@ -160,8 +196,6 @@ class TryoutController extends Controller
         }
 
         $tryout->soals()->detach($soalId);
-
-        /* reorder ulang */
 
         $soals = DB::table('tryout_soal')
             ->where('tryout_id', $id)
@@ -236,6 +270,18 @@ class TryoutController extends Controller
                 $q->orderBy('pivot_urutan_soal');
             }
         ])->findOrFail($id);
+
+        if ($tryout->type === 'free' && $tryout->quota) {
+
+            $participants = TryoutResult::where('tryout_id', $tryout->id)->count();
+
+            if ($participants >= $tryout->quota) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Kuota tryout sudah penuh'
+                ], 422);
+            }
+        }
 
         $session = TryoutResult::firstOrCreate(
             [
@@ -385,30 +431,19 @@ class TryoutController extends Controller
     }
 
 
-/* ===============================
-   DELETE TRYOUT
-================================= */
+    public function destroy($id)
+    {
+        $tryout = Tryout::findOrFail($id);
 
-public function destroy($id)
-{
-    $tryout = Tryout::findOrFail($id);
+        $tryout->soals()->detach();
+        $tryout->delete();
 
-    // hapus semua relasi soal di pivot
-    $tryout->soals()->detach();
+        return response()->json([
+            'status' => true,
+            'message' => 'Tryout berhasil dihapus'
+        ]);
+    }
 
-    // hapus tryout
-    $tryout->delete();
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Tryout berhasil dihapus'
-    ]);
-}
-
-
-    /* ===============================
-       UPDATE TARGET
-    ================================= */
 
     public function update(Request $request, $id)
     {
@@ -425,48 +460,51 @@ public function destroy($id)
             'twk_count' => 'required|integer|min:0',
             'tiu_count' => 'required|integer|min:0',
             'tkp_count' => 'required|integer|min:0',
+            'type' => 'nullable|in:free,premium',
+            'price' => 'nullable|integer|min:0',
+            'discount' => 'nullable|integer|min:0|max:100',
         ]);
 
         $tryout->update([
             'twk_target' => $request->twk_count,
             'tiu_target' => $request->tiu_count,
             'tkp_target' => $request->tkp_count,
+
+            'type' => $request->type ?? $tryout->type,
+            'price' => $request->price ?? $tryout->price,
+            'discount' => $request->discount ?? $tryout->discount,
         ]);
 
         return response()->json([
             'status' => true,
-            'message' => 'Komposisi tryout berhasil diperbarui',
+            'message' => 'Tryout berhasil diperbarui',
             'data' => $tryout
         ]);
     }
 
-/* ===============================
-   REORDER SOAL
-================================= */
 
-public function reorder(Request $request, $id)
-{
-    $request->validate([
-        'orders' => 'required|array'
-    ]);
+    public function reorder(Request $request, $id)
+    {
+        $request->validate([
+            'orders' => 'required|array'
+        ]);
 
-    foreach ($request->orders as $soalId => $order) {
+        foreach ($request->orders as $soalId => $order) {
 
-        DB::table('tryout_soal')
-            ->where([
-                'tryout_id' => $id,
-                'soal_id' => $soalId
-            ])
-            ->update([
-                'urutan_soal' => $order
-            ]);
+            DB::table('tryout_soal')
+                ->where([
+                    'tryout_id' => $id,
+                    'soal_id' => $soalId
+                ])
+                ->update([
+                    'urutan_soal' => $order
+                ]);
+        }
 
+        return response()->json([
+            'status' => true,
+            'message' => 'Urutan soal berhasil diperbarui'
+        ]);
     }
-
-    return response()->json([
-        'status' => true,
-        'message' => 'Urutan soal berhasil diperbarui'
-    ]);
-}
 
 }
