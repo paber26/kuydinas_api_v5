@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\SoalController;
 use App\Http\Controllers\Api\TryoutController;
+use App\Http\Controllers\Api\TryoutRegistrationController;
 use App\Http\Controllers\Api\TryoutResultController;
 use App\Http\Controllers\Api\RankingController;
 use App\Http\Controllers\Api\AuthController;
@@ -67,6 +68,8 @@ Route::middleware(['auth:sanctum','user'])->group(function () {
     
     Route::get('/tryouts/{id}', [UserTryoutController::class,'show']);
 
+    Route::post('/tryouts/{id}/register', [TryoutRegistrationController::class, 'register']);
+
     Route::post('/tryouts/{id}/start', [TryoutController::class, 'start']);
 
     Route::post('/tryouts/{id}/autosave', [TryoutController::class, 'autosave']);
@@ -77,7 +80,8 @@ Route::middleware(['auth:sanctum','user'])->group(function () {
 
     Route::get('/tryouts/{id}/result', [TryoutResultController::class, 'show']);
 
-    Route::get('/history', [TryoutResultController::class, 'history']);
+    Route::get('/history', [TryoutRegistrationController::class, 'history']);
+    
 
     Route::get('/tryouts/{id}/ranking', [RankingController::class, 'index']);
 

@@ -23,11 +23,15 @@ class Tryout extends Model
     ];
 
     public function soals()
-    
     {
-    return $this->belongsToMany(Soal::class, 'tryout_soal')
-        ->withPivot('urutan_soal')
-        ->withTimestamps()
-        ->orderByPivot('urutan_soal', 'asc');
+        return $this->belongsToMany(Soal::class, 'tryout_soal')
+            ->withPivot('urutan_soal')
+            ->withTimestamps()
+            ->orderByPivot('urutan_soal', 'asc');
+    }
+
+    public function registrations()
+    {
+        return $this->hasMany(TryoutRegistration::class);
     }
 }

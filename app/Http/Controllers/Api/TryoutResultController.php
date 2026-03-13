@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\TryoutRegistration;
 use App\Models\TryoutResult;
 use Illuminate\Http\Request;
 
@@ -26,9 +27,18 @@ class TryoutResultController extends Controller
             ], 404);
         }
 
+        $registration = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryoutId)
+            ->first();
+
         return response()->json([
             'status' => true,
-            'data' => $result
+            'data' => [
+                'score' => (int) ($result->score ?? 0),
+                'correct_answer' => (int) ($result->correct_answer ?? 0),
+                'answers' => $result->answers ?? [],
+                'finished_at' => optional($registration?->finished_at)->toDateTimeString(),
+            ]
         ]);
     }
 

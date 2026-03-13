@@ -15,6 +15,7 @@ class TryoutController extends Controller
     {
         $tryouts = Tryout::where('status', 'publish')
             ->withCount('soals')
+            ->withCount('registrations')
             ->latest()
             ->get()
             ->map(function ($tryout) {
@@ -41,7 +42,9 @@ class TryoutController extends Controller
                     'questionCount' => $questionCount,
 
                     'level' => 'Menengah',
-                    'seatsLeft' => $tryout->quota ?? 0,
+                    'seatsLeft' => $tryout->quota
+                        ? max($tryout->quota - $tryout->registrations_count, 0)
+                        : null,
 
                     'highlight' => $tryout->type === 'free',
                     'tag' => $tryout->type,

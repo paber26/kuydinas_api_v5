@@ -4,22 +4,21 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class TryoutResult extends Model
+class TryoutRegistration extends Model
 {
     protected $fillable = [
         'user_id',
         'tryout_id',
-        'score',
-        'correct_answer',
-        'answers',
-        'started_at'
+        'status',
+        'registered_at',
+        'started_at',
+        'finished_at',
     ];
 
     protected $casts = [
-        'score' => 'integer',
-        'correct_answer' => 'integer',
-        'answers' => 'array',
-        'started_at' => 'datetime'
+        'registered_at' => 'datetime',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
     ];
 
     public function user()

@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tryout;
 use App\Models\Soal;
+use App\Models\TryoutRegistration;
 use App\Models\TryoutResult;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class TryoutController extends Controller
 {
@@ -21,6 +24,7 @@ class TryoutController extends Controller
     public function index()
     {
         $tryouts = Tryout::withCount('soals')
+            ->withCount('registrations')
             ->latest()
             ->get()
             ->map(function ($tryout) {
@@ -41,10 +45,8 @@ class TryoutController extends Controller
                 $data['tag'] = $tryout->type;
                 $data['level'] = 'Menengah';
 
-                $participants = TryoutResult::where('tryout_id', $tryout->id)->count();
-
                 $data['seatsLeft'] = $tryout->quota
-                    ? max($tryout->quota - $participants, 0)
+                    ? max($tryout->quota - $tryout->registrations_count, 0)
                     : null;
 
                 return $data;
@@ -271,16 +273,15 @@ class TryoutController extends Controller
             }
         ])->findOrFail($id);
 
-        if ($tryout->type === 'free' && $tryout->quota) {
+        $registration = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryout->id)
+            ->first();
 
-            $participants = TryoutResult::where('tryout_id', $tryout->id)->count();
-
-            if ($participants >= $tryout->quota) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Kuota tryout sudah penuh'
-                ], 422);
-            }
+        if (!$registration) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Silakan registrasi tryout terlebih dahulu'
+            ], 422);
         }
 
         $session = TryoutResult::firstOrCreate(
@@ -291,9 +292,21 @@ class TryoutController extends Controller
             [
                 'answers' => [],
                 'score' => 0,
+                'correct_answer' => 0,
                 'started_at' => Carbon::now()
             ]
         );
+
+        if ($registration->status === 'registered') {
+            $registration->update([
+                'status' => 'started',
+                'started_at' => $session->started_at ?? Carbon::now(),
+            ]);
+        } elseif (!$registration->started_at && $session->started_at) {
+            $registration->update([
+                'started_at' => $session->started_at,
+            ]);
+        }
 
         $endTime = Carbon::parse($session->started_at)
             ->addMinutes($tryout->duration);
@@ -308,7 +321,6 @@ class TryoutController extends Controller
             ]
         ]);
     }
-
 
     /* ===============================
        AUTOSAVE
@@ -343,16 +355,22 @@ class TryoutController extends Controller
     {
         $user = $request->user();
 
-        $result = TryoutResult::where('user_id', $user->id)
-            ->where('tryout_id', $id)
-            ->firstOrFail();
-
         $tryout = Tryout::findOrFail($id);
 
-        $end = Carbon::parse($result->started_at)
-            ->addMinutes($tryout->duration);
+        $result = TryoutResult::where('user_id', $user->id)
+            ->where('tryout_id', $tryout->id)
+            ->first();
 
-        $remaining = $end->diffInSeconds(Carbon::now(), false);
+        if (!$result || !$result->started_at) {
+            return response()->json([
+                'status' => true,
+                'message' => 'Sesi tryout belum dimulai',
+                'remaining_seconds' => null,
+            ]);
+        }
+
+        $end = Carbon::parse($result->started_at)->addMinutes($tryout->duration);
+        $remaining = Carbon::now()->diffInSeconds($end, false);
 
         return response()->json([
             'status' => true,
@@ -376,36 +394,87 @@ class TryoutController extends Controller
         ])->findOrFail($id);
 
         $request->validate([
-            'answers' => 'required|array'
+            'answers' => 'required|array',
+            'answers.*' => 'nullable|string',
         ]);
 
-        $answers = $request->answers;
+        $answers = collect($request->input('answers', []))
+            ->mapWithKeys(function ($answer, $questionId) {
+                if ($answer === null) {
+                    return [$questionId => null];
+                }
+
+                return [$questionId => strtoupper(trim((string) $answer))];
+            })
+            ->all();
 
         $score = 0;
+        $correctAnswer = 0;
 
         foreach ($tryout->soals as $soal) {
 
-            $userAnswer = $answers[$soal->id] ?? null;
+            $userAnswer = $answers[$soal->id] ?? $answers[(string) $soal->id] ?? null;
+
+            if ($userAnswer === null || $userAnswer === '') {
+                continue;
+            }
 
             if ($soal->category !== 'TKP') {
+                $availableLabels = collect(is_array($soal->options) ? $soal->options : [])
+                    ->pluck('label')
+                    ->filter()
+                    ->map(fn($label) => strtoupper((string) $label))
+                    ->values()
+                    ->all();
 
-                if ($userAnswer && $userAnswer === $soal->correct_answer) {
+                if ($availableLabels && !in_array($userAnswer, $availableLabels, true)) {
+                    throw ValidationException::withMessages([
+                        "answers.{$soal->id}" => 'Pilihan jawaban tidak valid.',
+                    ]);
+                }
+
+                if ($userAnswer === strtoupper((string) $soal->correct_answer)) {
+                    $correctAnswer++;
                     $score++;
                 }
 
             } else {
 
-                if ($userAnswer) {
+                $selected = collect(is_array($soal->options) ? $soal->options : [])
+                    ->first(function ($option) use ($userAnswer) {
+                        return strtoupper((string) data_get($option, 'label')) === $userAnswer;
+                    });
 
-                    $selected = collect($soal->options)
-                        ->firstWhere('label', $userAnswer);
+                if (!$selected) {
+                    throw ValidationException::withMessages([
+                        "answers.{$soal->id}" => 'Pilihan jawaban tidak valid.',
+                    ]);
+                }
 
-                    if ($selected && isset($selected['score'])) {
+                if (isset($selected['score'])) {
+                    $selectedScore = (int) $selected['score'];
 
-                        $score += (int) $selected['score'];
+                    $score += $selectedScore;
+
+                    if ($selectedScore === 5) {
+                        $correctAnswer++;
                     }
                 }
             }
+        }
+
+        $finishedAt = Carbon::now();
+
+        if (!Schema::hasColumn('tryout_results', 'correct_answer')) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Kolom correct_answer belum tersedia pada tabel tryout_results.',
+                'errors' => [
+                    'correct_answer' => [
+                        'Tambahkan kolom correct_answer bertipe integer dengan default 0.',
+                    ],
+                ],
+            ], 422);
         }
 
         TryoutResult::updateOrCreate(
@@ -415,9 +484,17 @@ class TryoutController extends Controller
             ],
             [
                 'score' => $score,
+                'correct_answer' => $correctAnswer,
                 'answers' => $answers
             ]
         );
+
+        TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryout->id)
+            ->update([
+                'status' => 'completed',
+                'finished_at' => $finishedAt,
+            ]);
 
         Cache::forget("ranking_tryout_{$id}");
 
@@ -425,7 +502,10 @@ class TryoutController extends Controller
             'status' => true,
             'message' => 'Tryout selesai',
             'data' => [
-                'score' => $score
+                'score' => $score,
+                'correct_answer' => $correctAnswer,
+                'answers' => $answers,
+                'finished_at' => $finishedAt->toDateTimeString(),
             ]
         ]);
     }
