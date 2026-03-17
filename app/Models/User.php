@@ -18,6 +18,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'coin_balance',
         'role',
         'is_active',
         'last_login',
@@ -42,6 +43,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'coin_balance' => 'integer',
             'is_active' => 'boolean',
         ];
     }
@@ -63,5 +65,15 @@ class User extends Authenticatable
     public function tryoutRegistrations()
     {
         return $this->hasMany(TryoutRegistration::class);
+    }
+
+    public function walletTransactions()
+    {
+        return $this->hasMany(WalletTransaction::class);
+    }
+
+    public function topupTransactions()
+    {
+        return $this->hasMany(TopupTransaction::class);
     }
 }

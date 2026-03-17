@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\TryoutController;
 use App\Http\Controllers\Api\TryoutRegistrationController;
 use App\Http\Controllers\Api\TryoutResultController;
 use App\Http\Controllers\Api\RankingController;
+use App\Http\Controllers\Api\PaymentController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
@@ -81,6 +83,18 @@ Route::middleware(['auth:sanctum','user'])->group(function () {
     Route::get('/tryouts/{id}/result', [TryoutResultController::class, 'show']);
 
     Route::get('/history', [TryoutRegistrationController::class, 'history']);
+
+    Route::get('/wallet', [WalletController::class, 'index']);
+
+    Route::get('/wallet/topup-packages', [WalletController::class, 'topupPackages']);
+
+    Route::post('/wallet/topup/create', [WalletController::class, 'createTopup']);
+
+    Route::get('/wallet/topup/{id}', [WalletController::class, 'showTopup']);
+
+    Route::get('/wallet/redeemable-tryouts', [WalletController::class, 'redeemableTryouts']);
+
+    Route::post('/wallet/redeem-tryout/{id}', [WalletController::class, 'redeemTryout']);
     
 
     Route::get('/tryouts/{id}/ranking', [RankingController::class, 'index']);
@@ -88,6 +102,8 @@ Route::middleware(['auth:sanctum','user'])->group(function () {
     Route::get('/tryouts/{id}/my-rank', [RankingController::class, 'myRank']);
 
 });
+
+Route::post('/payments/midtrans/webhook', [PaymentController::class, 'midtransWebhook']);
 
 
 /*

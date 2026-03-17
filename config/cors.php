@@ -11,6 +11,7 @@ return [
     //  'https://userli.kuydinas.id',
     //  'https://kuydinasadminv5.vercel.app',
     //  'https://adminvercel.kuydinas.id',
+        'https://kuydinasuserv5.vercel.app',
         'http://127.0.0.1:5173',
         'http://localhost:5173',
 
