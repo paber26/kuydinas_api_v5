@@ -26,10 +26,27 @@ class MidtransSnapService
         return hash_equals($expectedSignature, $signatureKey);
     }
 
+    public function getTransactionStatus(string $orderId): array
+    {
+        $response = Http::withBasicAuth(config('midtrans.server_key'), '')
+            ->acceptJson()
+            ->get($this->baseUrlStatus() . '/v2/' . $orderId . '/status')
+            ->throw();
+
+        return $response->json();
+    }
+
     private function baseUrl(): string
     {
         return config('midtrans.is_production')
             ? 'https://app.midtrans.com'
             : 'https://app.sandbox.midtrans.com';
+    }
+
+    private function baseUrlStatus(): string
+    {
+        return config('midtrans.is_production')
+            ? 'https://api.midtrans.com'
+            : 'https://api.sandbox.midtrans.com';
     }
 }

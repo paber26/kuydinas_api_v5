@@ -7,15 +7,9 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-    //  'https://adminli.kuydinas.id',
-    //  'https://userli.kuydinas.id',
-    //  'https://kuydinasadminv5.vercel.app',
-    //  'https://adminvercel.kuydinas.id',
-        'https://kuydinasuserv5.vercel.app',
+        'https://kuydinasclientv5.vercel.app',
         'http://127.0.0.1:5173',
         'http://localhost:5173',
-
-        
     ],
 
     'allowed_headers' => ['*'],
@@ -24,6 +18,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

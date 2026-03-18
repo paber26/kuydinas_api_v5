@@ -12,6 +12,7 @@ use App\Models\WalletTransaction;
 use App\Services\MidtransSnapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -230,6 +231,91 @@ class WalletController extends Controller
                 'created_at' => optional($topup->created_at)->toDateTimeString(),
             ],
         ]);
+    }
+
+    public function syncTopup(Request $request, $id)
+    {
+        $topup = TopupTransaction::where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        if ($topup->status === 'paid') {
+            return response()->json([
+                'status' => true,
+                'message' => 'Transaksi sudah dibayar.',
+                'data' => [
+                    'status' => $topup->status,
+                ],
+            ]);
+        }
+
+        try {
+            $statusResponse = $this->midtransSnapService->getTransactionStatus($topup->order_id);
+            $transactionStatus = $statusResponse['transaction_status'] ?? 'pending';
+            $fraudStatus = $statusResponse['fraud_status'] ?? '';
+
+            $isSuccess = in_array($transactionStatus, ['settlement', 'capture']) && $fraudStatus !== 'challenge';
+
+            if ($isSuccess) {
+                DB::transaction(function () use ($topup, $transactionStatus, $fraudStatus) {
+                    $topup->refresh();
+                    if ($topup->status === 'paid') return;
+
+                    $user = User::whereKey($topup->user_id)->lockForUpdate()->firstOrFail();
+                    $balanceBefore = (int) ($user->coin_balance ?? 0);
+                    $creditedCoin = (int) $topup->coin_amount + (int) $topup->bonus_coin;
+                    $balanceAfter = $balanceBefore + $creditedCoin;
+
+                    $user->update(['coin_balance' => $balanceAfter]);
+
+                    $topup->update([
+                        'status' => 'paid',
+                        'transaction_status' => $transactionStatus,
+                        'fraud_status' => $fraudStatus,
+                        'paid_at' => now(),
+                    ]);
+
+                    WalletTransaction::create([
+                        'user_id' => $user->id,
+                        'type' => 'topup',
+                        'amount' => (int) $topup->gross_amount,
+                        'coin_amount' => $creditedCoin,
+                        'balance_before' => $balanceBefore,
+                        'balance_after' => $balanceAfter,
+                        'reference_type' => 'topup_transaction',
+                        'reference_id' => $topup->id,
+                        'description' => 'Sync Manual: Top up ' . $creditedCoin . ' coin via Midtrans',
+                    ]);
+                });
+
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Status transaksi berhasil diperbarui.',
+                    'data' => [
+                        'status' => 'paid',
+                    ],
+                ]);
+            }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Transaksi belum dibayar atau status belum berubah.',
+                'data' => [
+                    'status' => $topup->status,
+                    'midtrans_status' => $transactionStatus,
+                ],
+            ]);
+
+        } catch (Throwable $e) {
+            Log::error('Gagal sinkronisasi status Midtrans: ' . $e->getMessage(), [
+                'order_id' => $topup->order_id,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal sinkronisasi status dari Midtrans.',
+            ], 500);
+        }
     }
 
     public function redeemableTryouts(Request $request)

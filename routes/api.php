@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
 |--------------------------------------------------------------------------
 */
 
+
+
 Route::prefix('user')->group(function () {
 
     Route::post('/register',[UserAuthController::class,'register']);
@@ -91,6 +93,8 @@ Route::middleware(['auth:sanctum','user'])->group(function () {
     Route::post('/wallet/topup/create', [WalletController::class, 'createTopup']);
 
     Route::get('/wallet/topup/{id}', [WalletController::class, 'showTopup']);
+
+    Route::post('/wallet/topup/{id}/sync', [WalletController::class, 'syncTopup']);
 
     Route::get('/wallet/redeemable-tryouts', [WalletController::class, 'redeemableTryouts']);
 
