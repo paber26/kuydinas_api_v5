@@ -8,7 +8,7 @@ return [
 
     'allowed_origins' => [
         'https://kuydinasclientv5.vercel.app',
-        'https://kuydinasadminv5-three.vercel.app',
+        'https://kuydinas-admin-v5-five.vercel.app',
         'http://127.0.0.1:5173',
         'http://localhost:5173',
     ],
