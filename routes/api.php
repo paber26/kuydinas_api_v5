@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\RankingController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AdminUserController;
+use App\Http\Controllers\Api\AdminTopupTransactionController;
+use App\Http\Controllers\Api\TopupPackageController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
@@ -127,6 +130,14 @@ Route::middleware(['auth:sanctum','admin'])
     */
 
     Route::apiResource('/soal', SoalController::class);
+
+    Route::apiResource('/topup-packages', TopupPackageController::class);
+
+    Route::get('/users/active-count', [AdminUserController::class, 'activeCount']);
+    Route::get('/users/count', [AdminUserController::class, 'totalCount']);
+    Route::get('/topup-transactions/summary', [AdminTopupTransactionController::class, 'summary']);
+    Route::get('/users', [AdminUserController::class, 'index']);
+    Route::patch('/users/{id}', [AdminUserController::class, 'update']);
 
     /*
     |--------------------------------------------------------------------------

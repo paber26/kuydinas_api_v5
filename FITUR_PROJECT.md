@@ -117,14 +117,14 @@ Fitur yang tersedia:
 - melihat daftar tryout yang sudah publish
 - melihat detail tryout yang sudah publish
 - response sudah disiapkan dengan field tambahan untuk frontend seperti:
-  - `subtitle`
-  - `category`
-  - `isFree`
-  - `questionCount`
-  - `seatsLeft`
-  - `highlight`
-  - `tag`
-  - `level`
+    - `subtitle`
+    - `category`
+    - `isFree`
+    - `questionCount`
+    - `seatsLeft`
+    - `highlight`
+    - `tag`
+    - `level`
 
 ### 7. Registrasi Tryout
 
@@ -165,10 +165,10 @@ Fitur yang tersedia:
 
 - melihat hasil tryout milik user yang login
 - menampilkan:
-  - skor
-  - jumlah jawaban benar
-  - jawaban yang tersimpan
-  - waktu selesai
+    - skor
+    - jumlah jawaban benar
+    - jawaban yang tersimpan
+    - waktu selesai
 
 ### 10. Ranking Tryout
 
@@ -213,6 +213,21 @@ Status pembayaran yang terlihat di code:
 - `failed`
 - `cancelled`
 - `expired`
+
+### Pembaruan Terbaru (Maret 2026)
+
+- Endpoint sinkronisasi manual status Midtrans:
+    - `POST /api/wallet/topup/{id}/sync` untuk menarik status transaksi langsung dari API Midtrans dan mengkredit koin jika status sukses (`settlement/capture`). Lihat [WalletController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/WalletController.php#L234-L318) dan [api.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/routes/api.php#L95-L99).
+- Verifikasi signature webhook Midtrans dan pengecekan nominal:
+    - Webhook memverifikasi `signature_key` dan menyamakan `gross_amount` sebelum memproses kredit koin. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/PaymentController.php#L1-L224).
+- Pemetaan status dan idempoten kredit:
+    - Status Midtrans dipetakan ke status lokal (`paid/pending/failed/...`) dan sistem memastikan kredit koin hanya terjadi sekali. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/PaymentController.php#L225-L244).
+- Layanan status Midtrans Snap:
+    - Penambahan fungsi `getTransactionStatus` untuk memanggil `v2/{order_id}/status`. Lihat [MidtransSnapService.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Services/MidtransSnapService.php#L27-L49).
+- Konfigurasi CORS produksi:
+    - Domain frontend yang diizinkan: `https://kuydinasclientv5.vercel.app`. `supports_credentials` diaktifkan. Lihat [cors.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/config/cors.php).
+- Callback Snap:
+    - `wallet.topup_finish_url` diambil dari `.env` melalui [wallet.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/config/wallet.php).
 
 ## Entitas Data yang Sudah Dipakai
 
