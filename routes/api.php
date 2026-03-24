@@ -13,6 +13,13 @@ use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
 
+Route::get('/ping', function () {
+    return response()->json([
+        'status' => true,
+        'message' => 'API connected',
+    ]);
+});
+
 /*
 |--------------------------------------------------------------------------
 | USER AUTH
@@ -26,8 +33,10 @@ Route::prefix('user')->group(function () {
     Route::post('/register',[UserAuthController::class,'register']);
     Route::post('/login',[UserAuthController::class,'login']);
 
-    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
-    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
+    Route::get('/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'user');
+    Route::get('/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'user');
+    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'user');
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'user');
 
     Route::middleware('auth:sanctum')->group(function () {
 
@@ -48,8 +57,10 @@ Route::prefix('admin')->group(function () {
 
     Route::post('/login',[AuthController::class,'login']);
 
-    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
-    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
+    Route::get('/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'admin');
+    Route::get('/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'admin');
+    Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect'])->defaults('scope', 'admin');
+    Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->defaults('scope', 'admin');
 
     Route::middleware('auth:sanctum')->group(function () {
 
