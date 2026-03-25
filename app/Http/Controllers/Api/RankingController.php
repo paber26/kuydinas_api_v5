@@ -9,18 +9,14 @@ use Illuminate\Support\Facades\Cache;
 
 class RankingController extends Controller
 {
-    /* ================= LEADERBOARD ================= */
-
     public function index($tryoutId)
     {
         $ranking = Cache::remember("ranking_tryout_{$tryoutId}", 10, function () use ($tryoutId) {
-
             return TryoutResult::with('user:id,name')
                 ->where('tryout_id', $tryoutId)
                 ->orderByDesc('score')
                 ->limit(100)
                 ->get();
-
         });
 
         return response()->json([
@@ -28,8 +24,6 @@ class RankingController extends Controller
             'data' => $ranking
         ]);
     }
-
-    /* ================= USER RANK ================= */
 
     public function myRank(Request $request, $tryoutId)
     {
@@ -39,7 +33,7 @@ class RankingController extends Controller
             ->where('tryout_id', $tryoutId)
             ->value('score');
 
-        if (!$score) {
+        if ($score === null) {
             return response()->json([
                 'status' => false,
                 'message' => 'User belum mengerjakan tryout'

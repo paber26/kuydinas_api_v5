@@ -12,6 +12,7 @@ class TryoutResult extends Model
         'score',
         'correct_answer',
         'answers',
+        'session_state',
         'started_at'
     ];
 
@@ -19,6 +20,7 @@ class TryoutResult extends Model
         'score' => 'integer',
         'correct_answer' => 'integer',
         'answers' => 'array',
+        'session_state' => 'array',
         'started_at' => 'datetime'
     ];
 

@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tryout;
 use App\Models\Soal;
+use App\Models\Tryout;
 use App\Models\TryoutRegistration;
 use App\Models\TryoutResult;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -16,11 +16,6 @@ use Illuminate\Validation\ValidationException;
 
 class TryoutController extends Controller
 {
-
-    /* ===============================
-       LIST TRYOUT
-    ================================= */
-
     public function index()
     {
         $tryouts = Tryout::withCount('soals')
@@ -28,15 +23,12 @@ class TryoutController extends Controller
             ->latest()
             ->get()
             ->map(function ($tryout) {
-
                 $questionCount =
                     ($tryout->twk_target ?? 0) +
                     ($tryout->tiu_target ?? 0) +
                     ($tryout->tkp_target ?? 0);
 
                 $data = $tryout->toArray();
-
-                // tambahan untuk frontend (PromoCard)
                 $data['subtitle'] = 'Simulasi lengkap seperti ujian asli';
                 $data['category'] = 'SKD CPNS';
                 $data['isFree'] = $tryout->type === 'free';
@@ -44,7 +36,6 @@ class TryoutController extends Controller
                 $data['highlight'] = $tryout->type === 'free';
                 $data['tag'] = $tryout->type;
                 $data['level'] = 'Menengah';
-
                 $data['seatsLeft'] = $tryout->quota
                     ? max($tryout->quota - $tryout->registrations_count, 0)
                     : null;
@@ -54,14 +45,9 @@ class TryoutController extends Controller
 
         return response()->json([
             'status' => true,
-            'data' => $tryouts
+            'data' => $tryouts,
         ]);
     }
-
-
-    /* ===============================
-       DETAIL TRYOUT + SOAL
-    ================================= */
 
     public function show($id)
     {
@@ -69,14 +55,9 @@ class TryoutController extends Controller
 
         return response()->json([
             'status' => true,
-            'data' => $tryout
+            'data' => $tryout,
         ]);
     }
-
-
-    /* ===============================
-       CREATE TRYOUT
-    ================================= */
 
     public function store(Request $request)
     {
@@ -114,14 +95,9 @@ class TryoutController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'Tryout berhasil dibuat',
-            'data' => $tryout
+            'data' => $tryout,
         ], 201);
     }
-
-
-    /* ===============================
-       ATTACH SOAL
-    ================================= */
 
     public function attachSoal(Request $request, $id)
     {
@@ -130,12 +106,12 @@ class TryoutController extends Controller
         if ($tryout->status === 'publish') {
             return response()->json([
                 'status' => false,
-                'message' => 'Tryout sudah dipublish'
+                'message' => 'Tryout sudah dipublish',
             ], 422);
         }
 
         $request->validate([
-            'soal_id' => 'required|exists:soals,id'
+            'soal_id' => 'required|exists:soals,id',
         ]);
 
         $soal = Soal::findOrFail($request->soal_id);
@@ -143,7 +119,7 @@ class TryoutController extends Controller
         if ($tryout->soals->contains($soal->id)) {
             return response()->json([
                 'status' => false,
-                'message' => 'Soal sudah ada'
+                'message' => 'Soal sudah ada',
             ], 422);
         }
 
@@ -155,13 +131,13 @@ class TryoutController extends Controller
             'TWK' => $tryout->twk_target,
             'TIU' => $tryout->tiu_target,
             'TKP' => $tryout->tkp_target,
-            default => 0
+            default => 0,
         };
 
         if ($currentCount >= $target) {
             return response()->json([
                 'status' => false,
-                'message' => 'Kuota kategori penuh'
+                'message' => 'Kuota kategori penuh',
             ], 422);
         }
 
@@ -172,19 +148,14 @@ class TryoutController extends Controller
         $nextOrder = $lastOrder ? $lastOrder + 1 : 1;
 
         $tryout->soals()->attach($soal->id, [
-            'urutan_soal' => $nextOrder
+            'urutan_soal' => $nextOrder,
         ]);
 
         return response()->json([
             'status' => true,
-            'message' => 'Soal berhasil ditambahkan'
+            'message' => 'Soal berhasil ditambahkan',
         ]);
     }
-
-
-    /* ===============================
-       DETACH SOAL
-    ================================= */
 
     public function detachSoal($id, $soalId)
     {
@@ -193,7 +164,7 @@ class TryoutController extends Controller
         if ($tryout->status === 'publish') {
             return response()->json([
                 'status' => false,
-                'message' => 'Tryout sudah dipublish'
+                'message' => 'Tryout sudah dipublish',
             ], 422);
         }
 
@@ -207,12 +178,11 @@ class TryoutController extends Controller
         $order = 1;
 
         foreach ($soals as $item) {
-
             DB::table('tryout_soal')
                 ->where('tryout_id', $id)
                 ->where('soal_id', $item->soal_id)
                 ->update([
-                    'urutan_soal' => $order
+                    'urutan_soal' => $order,
                 ]);
 
             $order++;
@@ -220,14 +190,9 @@ class TryoutController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'Soal berhasil dihapus'
+            'message' => 'Soal berhasil dihapus',
         ]);
     }
-
-
-    /* ===============================
-       PUBLISH TRYOUT
-    ================================= */
 
     public function publish($id)
     {
@@ -244,32 +209,27 @@ class TryoutController extends Controller
         ) {
             return response()->json([
                 'status' => false,
-                'message' => 'Komposisi belum sesuai'
+                'message' => 'Komposisi belum sesuai',
             ], 422);
         }
 
         $tryout->update([
-            'status' => 'publish'
+            'status' => 'publish',
         ]);
 
         return response()->json([
             'status' => true,
-            'message' => 'Tryout berhasil dipublish'
+            'message' => 'Tryout berhasil dipublish',
         ]);
     }
-
-
-    /* ===============================
-       START TRYOUT
-    ================================= */
 
     public function start(Request $request, $id)
     {
         $user = $request->user();
 
         $tryout = Tryout::with([
-            'soals' => function ($q) {
-                $q->orderBy('pivot_urutan_soal');
+            'soals' => function ($query) {
+                $this->applyTryoutQuestionOrdering($query);
             }
         ])->findOrFail($id);
 
@@ -280,22 +240,105 @@ class TryoutController extends Controller
         if (!$registration) {
             return response()->json([
                 'status' => false,
-                'message' => 'Silakan registrasi tryout terlebih dahulu'
+                'message' => 'Silakan registrasi tryout terlebih dahulu',
             ], 422);
         }
 
         $session = TryoutResult::firstOrCreate(
             [
                 'user_id' => $user->id,
-                'tryout_id' => $tryout->id
+                'tryout_id' => $tryout->id,
             ],
-            [
-                'answers' => [],
-                'score' => 0,
-                'correct_answer' => 0,
-                'started_at' => Carbon::now()
-            ]
+            $this->sessionCreateDefaults()
         );
+
+        if ($this->hasSessionStateColumn() && empty($session->session_state)) {
+            $session->session_state = $this->defaultSessionState();
+            $session->save();
+        }
+
+        if ($registration->status === 'registered') {
+            $registration->update([
+                'status' => 'started',
+                'started_at' => $session->started_at ?? Carbon::now(),
+            ]);
+            $registration->refresh();
+        } elseif (!$registration->started_at && $session->started_at) {
+            $registration->update([
+                'started_at' => $session->started_at,
+            ]);
+            $registration->refresh();
+        }
+
+        $endTime = Carbon::parse($session->started_at)->addMinutes($tryout->duration);
+
+        return response()->json([
+            'status' => true,
+            'data' => [
+                'id' => $tryout->id,
+                'title' => $tryout->title,
+                'duration' => $tryout->duration,
+                'started_at' => optional($session->started_at)->toDateTimeString(),
+                'end_time' => $endTime->toDateTimeString(),
+                'registration_status' => $registration->status,
+                'finished_at' => optional($registration->finished_at)->toDateTimeString(),
+                'answers' => $session->answers ?? [],
+                'session_state' => $this->sessionStateForResponse($session),
+                'questions' => $tryout->soals,
+            ]
+        ]);
+    }
+
+    public function autosave(Request $request, $id)
+    {
+        $user = $request->user();
+        $tryout = Tryout::findOrFail($id);
+
+        $registration = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryout->id)
+            ->first();
+
+        if (!$registration) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Silakan registrasi tryout terlebih dahulu',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'answers' => 'nullable|array',
+            'session_state' => 'nullable|array',
+            'session_state.current_index' => 'nullable|integer|min:0',
+            'session_state.current_question_id' => 'nullable|integer',
+            'session_state.flagged_question_ids' => 'nullable|array',
+            'session_state.flagged_question_ids.*' => 'integer',
+            'session_state.visited_question_ids' => 'nullable|array',
+            'session_state.visited_question_ids.*' => 'integer',
+            'session_state.last_interaction' => 'nullable|array',
+            'session_state.last_interaction.type' => 'nullable|string|max:50',
+            'session_state.last_interaction.question_id' => 'nullable|integer',
+            'session_state.last_interaction.option_label' => 'nullable|string|max:10',
+            'session_state.last_interaction.at' => 'nullable|date',
+        ]);
+
+        $session = TryoutResult::firstOrCreate(
+            [
+                'user_id' => $user->id,
+                'tryout_id' => $tryout->id,
+            ],
+            $this->sessionCreateDefaults()
+        );
+
+        $answers = $this->normalizeAnswers($validated['answers'] ?? ($session->answers ?? []));
+        $sessionState = $this->normalizeSessionState(
+            $validated['session_state'] ?? ($this->hasSessionStateColumn() ? ($session->session_state ?? []) : [])
+        );
+
+        $session->update($this->sessionWriteAttributes([
+            'answers' => $answers,
+            'session_state' => $sessionState,
+            'started_at' => $session->started_at ?? Carbon::now(),
+        ]));
 
         if ($registration->status === 'registered') {
             $registration->update([
@@ -308,53 +351,20 @@ class TryoutController extends Controller
             ]);
         }
 
-        $endTime = Carbon::parse($session->started_at)
-            ->addMinutes($tryout->duration);
-
         return response()->json([
             'status' => true,
+            'message' => 'Interaksi tryout tersimpan',
             'data' => [
-                'started_at' => $session->started_at,
-                'end_time' => $endTime,
-                'duration' => $tryout->duration,
-                'questions' => $tryout->soals
+                'answers' => $answers,
+                'session_state' => $sessionState,
+                'saved_at' => Carbon::now()->toDateTimeString(),
             ]
         ]);
     }
 
-    /* ===============================
-       AUTOSAVE
-    ================================= */
-
-    public function autosave(Request $request, $id)
-    {
-        $user = $request->user();
-
-        $request->validate([
-            'answers' => 'required|array'
-        ]);
-
-        TryoutResult::where('user_id', $user->id)
-            ->where('tryout_id', $id)
-            ->update([
-                'answers' => $request->answers
-            ]);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'Jawaban tersimpan'
-        ]);
-    }
-
-
-    /* ===============================
-       REMAINING TIME
-    ================================= */
-
     public function remainingTime(Request $request, $id)
     {
         $user = $request->user();
-
         $tryout = Tryout::findOrFail($id);
 
         $result = TryoutResult::where('user_id', $user->id)
@@ -374,45 +384,42 @@ class TryoutController extends Controller
 
         return response()->json([
             'status' => true,
-            'remaining_seconds' => max($remaining, 0)
+            'remaining_seconds' => max($remaining, 0),
         ]);
     }
-
-
-    /* ===============================
-       SUBMIT TRYOUT
-    ================================= */
 
     public function submit(Request $request, $id)
     {
         $user = $request->user();
 
         $tryout = Tryout::with([
-            'soals' => function ($q) {
-                $q->orderBy('pivot_urutan_soal');
+            'soals' => function ($query) {
+                $this->applyTryoutQuestionOrdering($query);
             }
         ])->findOrFail($id);
+
+        $registration = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryout->id)
+            ->first();
+
+        if (!$registration) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Silakan registrasi tryout terlebih dahulu',
+            ], 422);
+        }
 
         $request->validate([
             'answers' => 'required|array',
             'answers.*' => 'nullable|string',
+            'session_state' => 'nullable|array',
         ]);
 
-        $answers = collect($request->input('answers', []))
-            ->mapWithKeys(function ($answer, $questionId) {
-                if ($answer === null) {
-                    return [$questionId => null];
-                }
-
-                return [$questionId => strtoupper(trim((string) $answer))];
-            })
-            ->all();
-
+        $answers = $this->normalizeAnswers($request->input('answers', []));
         $score = 0;
         $correctAnswer = 0;
 
         foreach ($tryout->soals as $soal) {
-
             $userAnswer = $answers[$soal->id] ?? $answers[(string) $soal->id] ?? null;
 
             if ($userAnswer === null || $userAnswer === '') {
@@ -437,9 +444,7 @@ class TryoutController extends Controller
                     $correctAnswer++;
                     $score++;
                 }
-
             } else {
-
                 $selected = collect(is_array($soal->options) ? $soal->options : [])
                     ->first(function ($option) use ($userAnswer) {
                         return strtoupper((string) data_get($option, 'label')) === $userAnswer;
@@ -453,7 +458,6 @@ class TryoutController extends Controller
 
                 if (isset($selected['score'])) {
                     $selectedScore = (int) $selected['score'];
-
                     $score += $selectedScore;
 
                     if ($selectedScore === 5) {
@@ -477,53 +481,64 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        TryoutResult::updateOrCreate(
+        $session = TryoutResult::firstOrCreate(
             [
                 'user_id' => $user->id,
-                'tryout_id' => $tryout->id
+                'tryout_id' => $tryout->id,
             ],
-            [
-                'score' => $score,
-                'correct_answer' => $correctAnswer,
-                'answers' => $answers
-            ]
+            $this->sessionCreateDefaults()
         );
 
-        TryoutRegistration::where('user_id', $user->id)
-            ->where('tryout_id', $tryout->id)
-            ->update([
-                'status' => 'completed',
-                'finished_at' => $finishedAt,
-            ]);
+        $sessionState = $this->normalizeSessionState(
+            $request->input('session_state', $this->hasSessionStateColumn() ? ($session->session_state ?? []) : [])
+        );
+        $sessionState['submitted_at'] = $finishedAt->toDateTimeString();
+
+        $session->update($this->sessionWriteAttributes([
+            'score' => $score,
+            'correct_answer' => $correctAnswer,
+            'answers' => $answers,
+            'session_state' => $sessionState,
+            'started_at' => $session->started_at ?? Carbon::now(),
+        ]));
+
+        $registration->update([
+            'status' => 'completed',
+            'started_at' => $registration->started_at ?? $session->started_at ?? Carbon::now(),
+            'finished_at' => $finishedAt,
+        ]);
 
         Cache::forget("ranking_tryout_{$id}");
+
+        $rank = TryoutResult::where('tryout_id', $tryout->id)
+            ->where('score', '>', $score)
+            ->count() + 1;
 
         return response()->json([
             'status' => true,
             'message' => 'Tryout selesai',
             'data' => [
                 'score' => $score,
+                'rank' => $rank,
                 'correct_answer' => $correctAnswer,
                 'answers' => $answers,
+                'session_state' => $sessionState,
                 'finished_at' => $finishedAt->toDateTimeString(),
             ]
         ]);
     }
 
-
     public function destroy($id)
     {
         $tryout = Tryout::findOrFail($id);
-
         $tryout->soals()->detach();
         $tryout->delete();
 
         return response()->json([
             'status' => true,
-            'message' => 'Tryout berhasil dihapus'
+            'message' => 'Tryout berhasil dihapus',
         ]);
     }
-
 
     public function update(Request $request, $id)
     {
@@ -532,7 +547,7 @@ class TryoutController extends Controller
         if ($tryout->status === 'publish') {
             return response()->json([
                 'status' => false,
-                'message' => 'Tryout sudah dipublish dan tidak dapat diubah'
+                'message' => 'Tryout sudah dipublish dan tidak dapat diubah',
             ], 422);
         }
 
@@ -549,7 +564,6 @@ class TryoutController extends Controller
             'twk_target' => $request->twk_count,
             'tiu_target' => $request->tiu_count,
             'tkp_target' => $request->tkp_count,
-
             'type' => $request->type ?? $tryout->type,
             'price' => $request->price ?? $tryout->price,
             'discount' => $request->discount ?? $tryout->discount,
@@ -558,33 +572,175 @@ class TryoutController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'Tryout berhasil diperbarui',
-            'data' => $tryout
+            'data' => $tryout,
         ]);
     }
-
 
     public function reorder(Request $request, $id)
     {
         $request->validate([
-            'orders' => 'required|array'
+            'orders' => 'required|array',
         ]);
 
         foreach ($request->orders as $soalId => $order) {
-
             DB::table('tryout_soal')
                 ->where([
                     'tryout_id' => $id,
-                    'soal_id' => $soalId
+                    'soal_id' => $soalId,
                 ])
                 ->update([
-                    'urutan_soal' => $order
+                    'urutan_soal' => $order,
                 ]);
         }
 
         return response()->json([
             'status' => true,
-            'message' => 'Urutan soal berhasil diperbarui'
+            'message' => 'Urutan soal berhasil diperbarui',
         ]);
     }
 
+    private function defaultSessionState(): array
+    {
+        return [
+            'current_index' => 0,
+            'current_question_id' => null,
+            'flagged_question_ids' => [],
+            'visited_question_ids' => [],
+            'last_interaction' => null,
+        ];
+    }
+
+    private function hasSessionStateColumn(): bool
+    {
+        static $hasSessionStateColumn = null;
+
+        if ($hasSessionStateColumn === null) {
+            $hasSessionStateColumn = Schema::hasColumn('tryout_results', 'session_state');
+        }
+
+        return $hasSessionStateColumn;
+    }
+
+    private function sessionCreateDefaults(): array
+    {
+        $defaults = [
+            'answers' => [],
+            'score' => 0,
+            'correct_answer' => 0,
+            'started_at' => Carbon::now(),
+        ];
+
+        if ($this->hasSessionStateColumn()) {
+            $defaults['session_state'] = $this->defaultSessionState();
+        }
+
+        return $defaults;
+    }
+
+    private function sessionWriteAttributes(array $attributes): array
+    {
+        if (!$this->hasSessionStateColumn()) {
+            unset($attributes['session_state']);
+        }
+
+        return $attributes;
+    }
+
+    private function sessionStateForResponse(?TryoutResult $session): array
+    {
+        if (!$this->hasSessionStateColumn()) {
+            return $this->defaultSessionState();
+        }
+
+        return $this->normalizeSessionState($session?->session_state ?? []);
+    }
+
+    private function normalizeAnswers(array $answers): array
+    {
+        return collect($answers)
+            ->mapWithKeys(function ($answer, $questionId) {
+                if (is_array($answer)) {
+                    $answer = collect($answer)
+                        ->filter(fn($item) => $item !== null && trim((string) $item) !== '')
+                        ->map(fn($item) => strtoupper(trim((string) $item)))
+                        ->first();
+                }
+
+                if ($answer === null) {
+                    return [(string) $questionId => null];
+                }
+
+                $normalized = strtoupper(trim((string) $answer));
+
+                return [(string) $questionId => $normalized === '' ? null : $normalized];
+            })
+            ->filter(fn($answer) => $answer !== null)
+            ->all();
+    }
+
+    private function normalizeSessionState(?array $sessionState): array
+    {
+        $state = array_merge($this->defaultSessionState(), is_array($sessionState) ? $sessionState : []);
+        $state['current_index'] = max((int) ($state['current_index'] ?? 0), 0);
+        $state['current_question_id'] = isset($state['current_question_id']) ? (int) $state['current_question_id'] : null;
+        $state['flagged_question_ids'] = $this->normalizeQuestionIds($state['flagged_question_ids'] ?? []);
+        $state['visited_question_ids'] = $this->normalizeQuestionIds($state['visited_question_ids'] ?? []);
+
+        $lastInteraction = is_array($state['last_interaction'] ?? null)
+            ? $state['last_interaction']
+            : [];
+
+        $state['last_interaction'] = [
+            'type' => isset($lastInteraction['type']) ? substr((string) $lastInteraction['type'], 0, 50) : null,
+            'question_id' => isset($lastInteraction['question_id']) ? (int) $lastInteraction['question_id'] : null,
+            'option_label' => isset($lastInteraction['option_label'])
+                ? strtoupper(substr(trim((string) $lastInteraction['option_label']), 0, 10))
+                : null,
+            'at' => $this->normalizeTimestamp($lastInteraction['at'] ?? null) ?? Carbon::now()->toDateTimeString(),
+        ];
+
+        if (isset($state['submitted_at'])) {
+            $state['submitted_at'] = $this->normalizeTimestamp($state['submitted_at']);
+        }
+
+        return $state;
+    }
+
+    private function normalizeQuestionIds(array $questionIds): array
+    {
+        return collect($questionIds)
+            ->map(fn($questionId) => is_numeric($questionId) ? (int) $questionId : null)
+            ->filter(fn($questionId) => $questionId !== null)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeTimestamp($value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateTimeString();
+        } catch (\Throwable $exception) {
+            return null;
+        }
+    }
+
+    private function applyTryoutQuestionOrdering($query): void
+    {
+        $query
+            ->orderByRaw("
+                CASE category
+                    WHEN 'TWK' THEN 1
+                    WHEN 'TIU' THEN 2
+                    WHEN 'TKP' THEN 3
+                    ELSE 4
+                END
+            ")
+            ->orderBy('pivot_urutan_soal')
+            ->orderBy('id');
+    }
 }

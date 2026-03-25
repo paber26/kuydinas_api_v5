@@ -117,7 +117,7 @@ class GoogleAuthController extends Controller
 
     private function resolveGoogleRedirectUri(Request $request): string
     {
-        return $request->url();
+        return str_replace('/redirect', '/callback', $request->url());
     }
 
     private function resolveRequestedRedirectUrl(Request $request, string $scope): string

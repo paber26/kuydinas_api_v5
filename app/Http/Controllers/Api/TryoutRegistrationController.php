@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tryout;
 use App\Models\TryoutRegistration;
+use App\Models\TryoutResult;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -88,6 +89,22 @@ class TryoutRegistrationController extends Controller
                     ($tryout->tiu_target ?? 0) +
                     ($tryout->tkp_target ?? 0);
 
+                $result = TryoutResult::where('user_id', $registration->user_id)
+                    ->where('tryout_id', $registration->tryout_id)
+                    ->first();
+
+                $answeredCount = collect(is_array($result?->answers) ? $result->answers : [])
+                    ->filter(fn($answer) => $answer !== null && $answer !== '')
+                    ->count();
+
+                $progress = $questionCount > 0
+                    ? min((int) round(($answeredCount / $questionCount) * 100), 100)
+                    : 0;
+
+                if ($registration->status === 'completed') {
+                    $progress = 100;
+                }
+
                 return [
                     'id' => $registration->id,
                     'tryout_id' => $registration->tryout_id,
@@ -102,6 +119,11 @@ class TryoutRegistrationController extends Controller
                     'type' => $tryout->type,
                     'isFree' => $tryout->type === 'free',
                     'questionCount' => $questionCount,
+                    'progress' => $progress,
+                    'score' => $result?->score,
+                    'correct_answer' => $result?->correct_answer,
+                    'answered_count' => $answeredCount,
+                    'last_interaction_at' => data_get($result?->session_state, 'last_interaction.at'),
                     'tryout' => $tryout,
                 ];
             });
