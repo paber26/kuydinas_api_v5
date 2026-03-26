@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use App\Models\User;
 use App\Models\UserDevice;
 use Carbon\Carbon;
@@ -132,13 +133,54 @@ class UserAuthController extends Controller
         return response()->json([
             'status' => true,
             'data' => [
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ]
+                'user' => $this->serializeUser($user),
             ]
+        ]);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'email',
+                Rule::unique('users', 'email')->ignore($user->id),
+            ],
+            'current_password' => ['nullable', 'required_with:password', 'string'],
+            'password' => ['nullable', 'confirmed', 'min:6'],
+        ]);
+
+        if (!empty($data['password']) && !Hash::check((string) ($data['current_password'] ?? ''), (string) $user->password)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Password saat ini tidak sesuai',
+                'errors' => [
+                    'current_password' => ['Password saat ini tidak sesuai'],
+                ],
+            ], 422);
+        }
+
+        $payload = [
+            'name' => $data['name'],
+            'email' => $data['email'],
+        ];
+
+        if (!empty($data['password'])) {
+            $payload['password'] = Hash::make($data['password']);
+        }
+
+        $user->update($payload);
+        $user->refresh();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Profil berhasil diperbarui',
+            'data' => [
+                'user' => $this->serializeUser($user),
+            ],
         ]);
     }
 
@@ -155,5 +197,18 @@ class UserAuthController extends Controller
             'status' => true,
             'message' => 'Logout berhasil'
         ]);
+    }
+
+    private function serializeUser(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'coin_balance' => (int) ($user->coin_balance ?? 0),
+            'last_login' => optional($user->last_login)->toDateTimeString(),
+            'provider' => $user->provider,
+        ];
     }
 }
