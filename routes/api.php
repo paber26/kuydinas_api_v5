@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\TryoutController;
 use App\Http\Controllers\Api\TryoutRegistrationController;
 use App\Http\Controllers\Api\TryoutResultController;
 use App\Http\Controllers\Api\RankingController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\AuthController;
@@ -83,6 +84,8 @@ Route::prefix('admin')->group(function () {
  */
 
 Route::middleware(['auth:sanctum', 'user'])->group(function () {
+
+    Route::get('/dashboard/summary', [DashboardController::class , 'summary']);
 
     Route::get('/tryouts', [UserTryoutController::class , 'index']);
 
