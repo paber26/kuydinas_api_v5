@@ -1,6 +1,6 @@
 # Ringkasan Fitur Project
 
-Dokumen ini merangkum fitur yang saat ini sudah terlihat dari codebase backend `be-kuy`.
+Dokumen ini merangkum fitur yang saat ini sudah terlihat dari codebase backend `kuydinas_api_v5`.
 
 ## Gambaran Umum
 
