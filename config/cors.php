@@ -11,6 +11,8 @@ return [
         'https://kuydinas-admin-v5-five.vercel.app',
         'http://127.0.0.1:5173',
         'http://localhost:5173',
+        'https://kuymin.kuydinas.id',
+        'https://tryuot.kuydinas.id'
     ],
 
     'allowed_headers' => ['*'],
