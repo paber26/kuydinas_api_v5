@@ -1,6 +1,7 @@
 <?php
 
 use Laravel\Sanctum\Sanctum;
+use Illuminate\Support\Str;
 
 return [
 
@@ -15,12 +16,33 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1',
-        Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
-    ))),
+    'stateful' => array_values(array_filter(
+        array_unique(array_map(
+            static fn (string $domain) => Str::of($domain)
+                ->trim()
+                ->replaceFirst('https://', '')
+                ->replaceFirst('http://', '')
+                ->rtrim('/')
+                ->value(),
+            explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', array_filter([
+                'localhost',
+                'localhost:3000',
+                'localhost:5173',
+                '127.0.0.1',
+                '127.0.0.1:5173',
+                '127.0.0.1:8000',
+                '::1',
+                parse_url((string) env('FRONTEND_URL'), PHP_URL_HOST)
+                    ? parse_url((string) env('FRONTEND_URL'), PHP_URL_HOST).(parse_url((string) env('FRONTEND_URL'), PHP_URL_PORT) ? ':'.parse_url((string) env('FRONTEND_URL'), PHP_URL_PORT) : '')
+                    : null,
+                parse_url((string) env('ADMIN_FRONTEND_URL'), PHP_URL_HOST)
+                    ? parse_url((string) env('ADMIN_FRONTEND_URL'), PHP_URL_HOST).(parse_url((string) env('ADMIN_FRONTEND_URL'), PHP_URL_PORT) ? ':'.parse_url((string) env('ADMIN_FRONTEND_URL'), PHP_URL_PORT) : '')
+                    : null,
+                Sanctum::currentApplicationUrlWithPort(),
+            ]))))
+        )),
+        static fn ($domain) => filled($domain)
+    )),
 
     /*
     |--------------------------------------------------------------------------

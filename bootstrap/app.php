@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
     // CORS
     $middleware->prepend(\Illuminate\Http\Middleware\HandleCors::class);
+    $middleware->append(\App\Http\Middleware\ForceCorsHeaders::class);
 
     // Jika belum login jangan redirect
     $middleware->redirectGuestsTo(function () {
