@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Soal;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class SoalController extends Controller
@@ -16,7 +18,6 @@ class SoalController extends Controller
         'image/png',
         'image/webp',
         'image/gif',
-        'image/svg+xml',
     ];
 
     /* ===============================
@@ -198,36 +199,36 @@ class SoalController extends Controller
 
         }
 
-        $this->validateEmbeddedImages($data);
+        $data = $this->storeEmbeddedImages($data);
 
         return $data;
     }
 
-    private function validateEmbeddedImages(array $data): void
+    private function storeEmbeddedImages(array $data): array
     {
         $messages = [];
 
-        $this->appendEmbeddedImageValidation(
+        $data['question'] = $this->replaceEmbeddedImagesInHtml(
+            $data['question'] ?? null,
             $messages,
             'question',
-            $data['question'] ?? null,
             'Gambar pada pertanyaan'
         );
 
-        $this->appendEmbeddedImageValidation(
+        $data['explanation'] = $this->replaceEmbeddedImagesInHtml(
+            $data['explanation'] ?? null,
             $messages,
             'explanation',
-            $data['explanation'] ?? null,
             'Gambar pada pembahasan'
         );
 
         foreach (($data['options'] ?? []) as $index => $option) {
             $label = $option['label'] ?? chr(65 + $index);
 
-            $this->appendEmbeddedImageValidation(
+            $data['options'][$index]['text'] = $this->replaceEmbeddedImagesInHtml(
+                $option['text'] ?? null,
                 $messages,
                 "options.$index.text",
-                $option['text'] ?? null,
                 "Gambar pada opsi {$label}"
             );
         }
@@ -235,32 +236,73 @@ class SoalController extends Controller
         if ($messages !== []) {
             throw ValidationException::withMessages($messages);
         }
+
+        return $data;
     }
 
-    private function appendEmbeddedImageValidation(array &$messages, string $field, ?string $html, string $label): void
+    private function replaceEmbeddedImagesInHtml(?string $html, array &$messages, string $field, string $label): ?string
     {
-        foreach ($this->extractImageSources($html) as $src) {
+        if (!is_string($html) || trim($html) === '') {
+            return $html;
+        }
+
+        $sources = $this->extractImageSources($html);
+        if ($sources === []) {
+            return $html;
+        }
+
+        $cache = [];
+
+        foreach ($sources as $src) {
             if (!str_starts_with($src, 'data:image/')) {
                 continue;
             }
 
-            if (!preg_match('/^data:([^;]+);base64,/i', $src, $matches)) {
+            if (isset($cache[$src])) {
+                $html = str_replace($src, $cache[$src], $html);
+                continue;
+            }
+
+            if (!preg_match('/^data:([^;]+);base64,(.+)$/i', $src, $matches)) {
                 $messages[$field] = "{$label} harus memakai format base64 yang valid.";
-                return;
+                return $html;
             }
 
             $mimeType = strtolower($matches[1]);
 
             if (!in_array($mimeType, self::ALLOWED_IMAGE_MIME_TYPES, true)) {
-                $messages[$field] = "{$label} hanya menerima JPG, PNG, WEBP, GIF, atau SVG.";
-                return;
+                $messages[$field] = "{$label} hanya menerima JPG, PNG, WEBP, atau GIF.";
+                return $html;
             }
 
             if ($this->getDataUriSizeInBytes($src) > self::MAX_EMBEDDED_IMAGE_BYTES) {
                 $messages[$field] = "{$label} maksimal 2MB per gambar.";
-                return;
+                return $html;
             }
+
+            $decoded = base64_decode($matches[2], true);
+            if ($decoded === false) {
+                $messages[$field] = "{$label} harus memakai base64 yang valid.";
+                return $html;
+            }
+
+            $ext = match ($mimeType) {
+                'image/jpeg', 'image/jpg' => 'jpg',
+                'image/png' => 'png',
+                'image/webp' => 'webp',
+                'image/gif' => 'gif',
+                default => 'bin',
+            };
+
+            $path = 'soal-images/'.Str::uuid().'.'.$ext;
+            Storage::disk('public')->put($path, $decoded, 'public');
+
+            $url = Storage::disk('public')->url($path);
+            $cache[$src] = $url;
+            $html = str_replace($src, $url, $html);
         }
+
+        return $html;
     }
 
     private function extractImageSources(?string $html): array

@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AdminTopupTransactionController;
 use App\Http\Controllers\Api\TopupPackageController;
+use App\Http\Controllers\Api\AdminUploadController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
@@ -147,6 +148,8 @@ Route::middleware(['auth:sanctum', 'admin'])
      */
 
         Route::apiResource('/soal', SoalController::class);
+
+        Route::post('/uploads/images', [AdminUploadController::class, 'storeImage']);
 
         Route::apiResource('/topup-packages', TopupPackageController::class);
 
