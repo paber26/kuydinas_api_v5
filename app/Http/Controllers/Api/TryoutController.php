@@ -23,6 +23,10 @@ class TryoutController extends Controller
             ->latest()
             ->get()
             ->map(function ($tryout) {
+                if ($tryout->status === 'publish' && $tryout->type === 'free' && $tryout->free_valid_until && Carbon::now()->greaterThan(Carbon::parse($tryout->free_valid_until)->endOfDay())) {
+                    $tryout->update(['type' => 'premium']);
+                }
+
                 $questionCount =
                     ($tryout->twk_target ?? 0) +
                     ($tryout->tiu_target ?? 0) +
@@ -32,8 +36,11 @@ class TryoutController extends Controller
                 $data['subtitle'] = 'Simulasi lengkap seperti ujian asli';
                 $data['category'] = 'SKD CPNS';
                 $data['isFree'] = $tryout->type === 'free';
+                $data['free_start_date'] = optional($tryout->free_start_date)->toDateTimeString();
                 $data['questionCount'] = $questionCount;
                 $data['highlight'] = $tryout->type === 'free';
+                $data['info_ig'] = $tryout->info_ig;
+                $data['info_wa'] = $tryout->info_wa;
                 $data['tag'] = $tryout->type;
                 $data['level'] = 'Menengah';
                 $data['seatsLeft'] = $tryout->quota
@@ -68,6 +75,10 @@ class TryoutController extends Controller
             'quota' => 'nullable|integer|min:1',
             'price' => 'nullable|integer|min:0',
             'discount' => 'nullable|integer|min:0|max:100',
+            'free_start_date' => 'nullable|date',
+            'free_valid_until' => 'nullable|date',
+            'info_ig' => 'nullable|url',
+            'info_wa' => 'nullable|url',
             'twk_count' => 'required|integer',
             'tiu_count' => 'required|integer',
             'tkp_count' => 'required|integer',
@@ -84,6 +95,14 @@ class TryoutController extends Controller
             'quota' => $request->quota,
             'price' => $request->price ?? 0,
             'discount' => $request->discount ?? 0,
+            'free_start_date' => $request->type === 'free' && $request->filled('free_start_date')
+                ? Carbon::parse($request->free_start_date)->toDateTimeString()
+                : null,
+            'free_valid_until' => $request->type === 'free' && $request->filled('free_valid_until')
+                ? Carbon::parse($request->free_valid_until)->toDateTimeString()
+                : null,
+            'info_ig' => $request->type === 'free' ? $request->info_ig : null,
+            'info_wa' => $request->type === 'free' ? $request->info_wa : null,
             'twk_target' => $request->twk_count,
             'tiu_target' => $request->tiu_count,
             'tkp_target' => $request->tkp_count,
@@ -103,12 +122,7 @@ class TryoutController extends Controller
     {
         $tryout = Tryout::with('soals')->findOrFail($id);
 
-        if ($tryout->status === 'publish') {
-            return response()->json([
-                'status' => false,
-                'message' => 'Tryout sudah dipublish',
-            ], 422);
-        }
+
 
         $request->validate([
             'soal_id' => 'required|exists:soals,id',
@@ -161,12 +175,7 @@ class TryoutController extends Controller
     {
         $tryout = Tryout::findOrFail($id);
 
-        if ($tryout->status === 'publish') {
-            return response()->json([
-                'status' => false,
-                'message' => 'Tryout sudah dipublish',
-            ], 422);
-        }
+
 
         $tryout->soals()->detach($soalId);
 
@@ -241,6 +250,13 @@ class TryoutController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Silakan registrasi tryout terlebih dahulu',
+            ], 422);
+        }
+
+        if ($registration->expires_at && Carbon::now()->greaterThan($registration->expires_at)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Masa berlaku tryout sudah habis. Silakan registrasi ulang.',
             ], 422);
         }
 
@@ -530,29 +546,79 @@ class TryoutController extends Controller
     {
         $tryout = Tryout::findOrFail($id);
 
-        if ($tryout->status === 'publish') {
-            return response()->json([
-                'status' => false,
-                'message' => 'Tryout sudah dipublish dan tidak dapat diubah',
-            ], 422);
-        }
-
         $request->validate([
+            'title' => 'nullable|string',
+            'duration' => 'nullable|integer|min:1',
+            'status' => 'nullable|in:draft,publish',
+            'quota' => 'nullable|integer|min:1',
             'twk_count' => 'required|integer|min:0',
             'tiu_count' => 'required|integer|min:0',
             'tkp_count' => 'required|integer|min:0',
             'type' => 'nullable|in:free,premium',
             'price' => 'nullable|integer|min:0',
             'discount' => 'nullable|integer|min:0|max:100',
+            'free_start_date' => 'nullable|date',
+            'free_valid_until' => 'nullable|date',
+            'info_ig' => 'nullable|url',
+            'info_wa' => 'nullable|url',
+            'twk_pg' => 'nullable|integer|min:0',
+            'tiu_pg' => 'nullable|integer|min:0',
+            'tkp_pg' => 'nullable|integer|min:0',
         ]);
 
+        $this->backfillMissingRegistrationExpiry($tryout);
+
+        $nextType = $request->type ?? $tryout->type;
+        $nextStatus = $request->status ?? $tryout->status;
+        $nextFreeValidUntil = null;
+        $nextFreeStartDate = null;
+
+        if ($request->filled('free_start_date')) {
+            $nextFreeStartDate = Carbon::parse($request->free_start_date)->toDateTimeString();
+        } elseif ($request->has('free_start_date')) {
+            $nextFreeStartDate = null;
+        } else {
+            $nextFreeStartDate = optional($tryout->free_start_date)->toDateTimeString();
+        }
+
+        if ($request->filled('free_valid_until')) {
+            $nextFreeValidUntil = Carbon::parse($request->free_valid_until)->toDateTimeString();
+        } elseif ($request->has('free_valid_until')) {
+            $nextFreeValidUntil = null;
+        } else {
+            $nextFreeValidUntil = optional($tryout->free_valid_until)->toDateTimeString();
+        }
+
+        $nextTwkTarget = (int) $request->twk_count;
+        $nextTiuTarget = (int) $request->tiu_count;
+        $nextTkpTarget = (int) $request->tkp_count;
+
+
+
+
+
         $tryout->update([
-            'twk_target' => $request->twk_count,
-            'tiu_target' => $request->tiu_count,
-            'tkp_target' => $request->tkp_count,
-            'type' => $request->type ?? $tryout->type,
+            'title' => $request->title ?? $tryout->title,
+            'duration' => $request->duration ?? $tryout->duration,
+            'status' => $nextStatus,
+            'quota' => $request->quota ?? $tryout->quota,
+            'twk_target' => $nextTwkTarget,
+            'tiu_target' => $nextTiuTarget,
+            'tkp_target' => $nextTkpTarget,
+            'type' => $nextType,
             'price' => $request->price ?? $tryout->price,
             'discount' => $request->discount ?? $tryout->discount,
+            'free_start_date' => $nextType === 'free'
+                ? $nextFreeStartDate
+                : $tryout->free_start_date,
+            'free_valid_until' => $nextType === 'free'
+                ? $nextFreeValidUntil
+                : $tryout->free_valid_until,
+            'info_ig' => $nextType === 'free' ? ($request->has('info_ig') ? $request->info_ig : $tryout->info_ig) : null,
+            'info_wa' => $nextType === 'free' ? ($request->has('info_wa') ? $request->info_wa : $tryout->info_wa) : null,
+            'twk_pg' => $request->twk_pg ?? $tryout->twk_pg,
+            'tiu_pg' => $request->tiu_pg ?? $tryout->tiu_pg,
+            'tkp_pg' => $request->tkp_pg ?? $tryout->tkp_pg,
         ]);
 
         return response()->json([
@@ -560,6 +626,52 @@ class TryoutController extends Controller
             'message' => 'Tryout berhasil diperbarui',
             'data' => $tryout,
         ]);
+    }
+
+    private function ensurePublishCompositionMatches(Tryout $tryout, int $twkTarget, int $tiuTarget, int $tkpTarget): void
+    {
+        $soals = $tryout->relationLoaded('soals') ? $tryout->soals : $tryout->soals()->get();
+
+        $twk = $soals->where('category', 'TWK')->count();
+        $tiu = $soals->where('category', 'TIU')->count();
+        $tkp = $soals->where('category', 'TKP')->count();
+
+        if ($twk !== $twkTarget || $tiu !== $tiuTarget || $tkp !== $tkpTarget) {
+            throw ValidationException::withMessages([
+                'status' => 'Komposisi tryout belum sesuai untuk status publish.',
+            ]);
+        }
+    }
+
+    private function backfillMissingRegistrationExpiry(Tryout $tryout): void
+    {
+        if ($tryout->type !== 'free') {
+            return;
+        }
+
+        $registrations = TryoutRegistration::where('tryout_id', $tryout->id)
+            ->whereNull('expires_at')
+            ->get();
+
+        if ($registrations->isEmpty()) {
+            return;
+        }
+
+        foreach ($registrations as $registration) {
+            $registration->update([
+                'expires_at' => $this->resolveFreeRegistrationExpiry($tryout, $registration),
+            ]);
+        }
+    }
+
+    private function resolveFreeRegistrationExpiry(Tryout $tryout, TryoutRegistration $registration): ?Carbon
+    {
+        if ($tryout->free_valid_until) {
+            return Carbon::parse($tryout->free_valid_until)->endOfDay();
+        }
+
+        $registeredAt = $registration->registered_at ?? Carbon::now();
+        return Carbon::parse($registeredAt)->addDays(7);
     }
 
     public function reorder(Request $request, $id)

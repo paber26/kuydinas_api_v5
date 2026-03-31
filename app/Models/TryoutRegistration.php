@@ -13,12 +13,14 @@ class TryoutRegistration extends Model
         'registered_at',
         'started_at',
         'finished_at',
+        'expires_at',
     ];
 
     protected $casts = [
         'registered_at' => 'datetime',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
+        'expires_at' => 'datetime',
     ];
 
     public function user()

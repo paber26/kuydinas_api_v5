@@ -14,12 +14,20 @@ class Tryout extends Model
         'quota',
         'price',
         'discount',
+        'free_start_date',
+        'free_valid_days',
+        'free_valid_until',
         'twk_target',
         'tiu_target',
         'tkp_target',
         'twk_pg',
         'tiu_pg',
         'tkp_pg',
+    ];
+
+    protected $casts = [
+        'free_start_date' => 'date',
+        'free_valid_until' => 'date',
     ];
 
     public function soals()

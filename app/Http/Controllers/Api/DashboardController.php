@@ -292,6 +292,8 @@ class DashboardController extends Controller
             'discount' => $discount,
             'price' => $price,
             'final_price' => $finalPrice,
+            'free_start_date' => optional($tryout->free_start_date)->toDateString(),
+            'free_valid_until' => optional($tryout->free_valid_until)->toDateString(),
             'duration' => (int) ($tryout->duration ?? 0),
             'question_count' => $this->questionCount($tryout),
         ];

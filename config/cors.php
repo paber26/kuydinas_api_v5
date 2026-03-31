@@ -12,6 +12,7 @@ return [
         'https://kuydinasclientv5.vercel.app',
         'https://kuydinas-admin-v5-five.vercel.app',
         'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
         'http://localhost:5173',
         'https://kuymin.kuydinas.id',
         'https://tryout.kuydinas.id',
