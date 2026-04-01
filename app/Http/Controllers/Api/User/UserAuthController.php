@@ -139,6 +139,13 @@ class UserAuthController extends Controller
                 'email',
                 Rule::unique('users', 'email')->ignore($user->id),
             ],
+            'whatsapp' => ['nullable', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'],
+            'province_code' => ['nullable', 'string', 'max:20'],
+            'province_name' => ['nullable', 'string', 'max:255'],
+            'regency_code' => ['nullable', 'string', 'max:20'],
+            'regency_name' => ['nullable', 'string', 'max:255'],
+            'district_code' => ['nullable', 'string', 'max:20'],
+            'district_name' => ['nullable', 'string', 'max:255'],
             'current_password' => ['nullable', 'required_with:password', 'string'],
             'password' => ['nullable', 'confirmed', 'min:6'],
         ]);
@@ -156,6 +163,13 @@ class UserAuthController extends Controller
         $payload = [
             'name' => $data['name'],
             'email' => $data['email'],
+            'whatsapp' => $data['whatsapp'] ?? null,
+            'province_code' => $data['province_code'] ?? null,
+            'province_name' => $data['province_name'] ?? null,
+            'regency_code' => $data['regency_code'] ?? null,
+            'regency_name' => $data['regency_name'] ?? null,
+            'district_code' => $data['district_code'] ?? null,
+            'district_name' => $data['district_name'] ?? null,
         ];
 
         if (!empty($data['password'])) {
@@ -200,6 +214,13 @@ class UserAuthController extends Controller
             'last_login' => optional($user->last_login)->toDateTimeString(),
             'provider' => $user->provider,
             'image' => $user->image,
+            'whatsapp' => $user->whatsapp,
+            'province_code' => $user->province_code,
+            'province_name' => $user->province_name,
+            'regency_code' => $user->regency_code,
+            'regency_name' => $user->regency_name,
+            'district_code' => $user->district_code,
+            'district_name' => $user->district_name,
         ];
     }
 }

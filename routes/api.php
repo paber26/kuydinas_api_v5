@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AdminTopupTransactionController;
 use App\Http\Controllers\Api\TopupPackageController;
@@ -120,6 +121,10 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
     Route::get('/wallet/redeemable-tryouts', [WalletController::class , 'redeemableTryouts']);
 
     Route::post('/wallet/redeem-tryout/{id}', [WalletController::class , 'redeemTryout']);
+
+    Route::get('/regions/provinces', [RegionController::class, 'provinces']);
+    Route::get('/regions/regencies/{provinceCode}', [RegionController::class, 'regencies']);
+    Route::get('/regions/districts/{regencyCode}', [RegionController::class, 'districts']);
 
 
     Route::get('/tryouts/{id}/ranking', [RankingController::class , 'index']);

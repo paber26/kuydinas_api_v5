@@ -18,6 +18,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'whatsapp',
         'coin_balance',
         'role',
         'is_active',
@@ -26,6 +27,12 @@ class User extends Authenticatable
         'provider',
         'provider_id',
         'image',
+        'province_code',
+        'province_name',
+        'regency_code',
+        'regency_name',
+        'district_code',
+        'district_name',
     ];
 
     /**
