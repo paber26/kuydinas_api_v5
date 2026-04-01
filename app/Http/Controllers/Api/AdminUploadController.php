@@ -24,7 +24,7 @@ class AdminUploadController extends Controller
             'visibility' => 'public',
         ]);
 
-        $url = Storage::disk('public')->url($path);
+        $url = $this->resolvePublicStorageUrl($request, $path);
 
         // CKEditor expects { default: "url" }.
         return response()->json([
@@ -32,5 +32,12 @@ class AdminUploadController extends Controller
             'url' => $url,
         ], 201);
     }
-}
 
+    private function resolvePublicStorageUrl(Request $request, string $path): string
+    {
+        $storageUrl = Storage::disk('public')->url($path);
+        $storagePath = parse_url($storageUrl, PHP_URL_PATH) ?: '/storage/'.ltrim($path, '/');
+
+        return rtrim($request->getSchemeAndHttpHost(), '/').'/'.ltrim($storagePath, '/');
+    }
+}
