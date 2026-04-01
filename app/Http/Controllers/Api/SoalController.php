@@ -199,16 +199,17 @@ class SoalController extends Controller
 
         }
 
-        $data = $this->storeEmbeddedImages($data);
+        $data = $this->storeEmbeddedImages($request, $data);
 
         return $data;
     }
 
-    private function storeEmbeddedImages(array $data): array
+    private function storeEmbeddedImages(Request $request, array $data): array
     {
         $messages = [];
 
         $data['question'] = $this->replaceEmbeddedImagesInHtml(
+            $request,
             $data['question'] ?? null,
             $messages,
             'question',
@@ -216,6 +217,7 @@ class SoalController extends Controller
         );
 
         $data['explanation'] = $this->replaceEmbeddedImagesInHtml(
+            $request,
             $data['explanation'] ?? null,
             $messages,
             'explanation',
@@ -226,6 +228,7 @@ class SoalController extends Controller
             $label = $option['label'] ?? chr(65 + $index);
 
             $data['options'][$index]['text'] = $this->replaceEmbeddedImagesInHtml(
+                $request,
                 $option['text'] ?? null,
                 $messages,
                 "options.$index.text",
@@ -240,7 +243,7 @@ class SoalController extends Controller
         return $data;
     }
 
-    private function replaceEmbeddedImagesInHtml(?string $html, array &$messages, string $field, string $label): ?string
+    private function replaceEmbeddedImagesInHtml(Request $request, ?string $html, array &$messages, string $field, string $label): ?string
     {
         if (!is_string($html) || trim($html) === '') {
             return $html;
@@ -297,12 +300,20 @@ class SoalController extends Controller
             $path = 'soal-images/'.Str::uuid().'.'.$ext;
             Storage::disk('public')->put($path, $decoded, 'public');
 
-            $url = Storage::disk('public')->url($path);
+            $url = $this->resolvePublicStorageUrl($request, $path);
             $cache[$src] = $url;
             $html = str_replace($src, $url, $html);
         }
 
         return $html;
+    }
+
+    private function resolvePublicStorageUrl(Request $request, string $path): string
+    {
+        $storageUrl = Storage::disk('public')->url($path);
+        $storagePath = parse_url($storageUrl, PHP_URL_PATH) ?: '/storage/'.ltrim($path, '/');
+
+        return rtrim($request->getSchemeAndHttpHost(), '/').'/'.ltrim($storagePath, '/');
     }
 
     private function extractImageSources(?string $html): array
