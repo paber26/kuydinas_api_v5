@@ -17,6 +17,8 @@ class Tryout extends Model
         'free_start_date',
         'free_valid_days',
         'free_valid_until',
+        'info_ig',
+        'info_wa',
         'twk_target',
         'tiu_target',
         'tkp_target',
