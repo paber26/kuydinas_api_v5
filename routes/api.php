@@ -169,6 +169,7 @@ Route::middleware(['auth:sanctum', 'admin'])
         Route::post('/tryouts', [TryoutController::class , 'store']);
         Route::put('/tryouts/{id}', [TryoutController::class , 'update']);
         Route::delete('/tryouts/{id}', [TryoutController::class , 'destroy']);
+        Route::get('/tryouts/{id}/ranking', [\App\Http\Controllers\Api\RankingController::class , 'index']);
 
 
         /*
