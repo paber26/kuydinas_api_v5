@@ -24,7 +24,7 @@ class RankingController extends Controller
 
         $rankingResults = Cache::remember("ranking_tryout_{$tryoutId}", 10, function () use ($tryoutId) {
             return $this->latestCompletedResultsQuery($tryoutId)
-                ->with('user:id,name')
+                ->with('user:id,name,regency_name')
                 ->select('tryout_results.*')
                 ->orderByDesc('score')
                 ->orderBy('user_id')
@@ -41,7 +41,7 @@ class RankingController extends Controller
                     'user_id' => (int) $result->user_id,
                     'rank' => $index + 1,
                     'name' => $result->user?->name ?? 'Peserta',
-                    'region' => '-',
+                    'region' => $result->user?->regency_name ?: '-',
                     'twk' => $categoryScores['TWK'],
                     'tiu' => $categoryScores['TIU'],
                     'tkp' => $categoryScores['TKP'],
