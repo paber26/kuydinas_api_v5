@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Api\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rule;
+use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Str;
 use App\Models\User;
 use App\Models\UserDevice;
 use Carbon\Carbon;
@@ -18,7 +21,7 @@ class UserAuthController extends Controller
         $data = $request->validate([
             'name' => ['required','string','max:255'],
             'email' => ['required','email','unique:users,email'],
-            'password' => ['required','min:6']
+            'password' => ['required', 'confirmed', 'min:6']
         ]);
 
         $user = User::create([
@@ -29,11 +32,12 @@ class UserAuthController extends Controller
             'is_active' => true
         ]);
 
+        $user->sendEmailVerificationNotification();
         $token = $user->createToken('user_token')->plainTextToken;
 
         return response()->json([
             'status' => true,
-            'message' => 'Register berhasil',
+            'message' => 'Register berhasil. Silakan cek email untuk verifikasi akun.',
             'data' => [
                 'user' => $this->serializeUser($user),
                 'token' => $token
@@ -128,9 +132,138 @@ class UserAuthController extends Controller
         ]);
     }
 
+    public function sendVerificationNotification(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'status' => true,
+                'message' => 'Email akun sudah terverifikasi.',
+            ]);
+        }
+
+        $user->sendEmailVerificationNotification();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Email verifikasi berhasil dikirim ulang.',
+        ]);
+    }
+
+    public function verifyEmail(Request $request, int $id, string $hash)
+    {
+        $user = User::find($id);
+
+        if (!$user || !hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+            return $this->redirectToFrontend('verification', 'invalid');
+        }
+
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        return $this->redirectToFrontend('verification', 'success');
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email'],
+        ]);
+
+        $user = User::where('email', $data['email'])->first();
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Akun dengan email tersebut tidak ditemukan.',
+                'errors' => [
+                    'email' => ['Akun dengan email tersebut tidak ditemukan.'],
+                ],
+            ], 422);
+        }
+
+        if ($user->provider === 'google') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Akun ini menggunakan login Google. Silakan masuk dengan Google.',
+                'data' => [
+                    'provider' => 'google',
+                    'action' => 'google_login',
+                ],
+                'errors' => [
+                    'email' => ['Akun ini menggunakan login Google.'],
+                ],
+            ], 422);
+        }
+
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Email belum diverifikasi. Verifikasi email dulu sebelum reset password.',
+                'errors' => [
+                    'email' => ['Email belum diverifikasi.'],
+                ],
+            ], 422);
+        }
+
+        $status = Password::sendResetLink([
+            'email' => $data['email'],
+        ]);
+
+        if ($status !== Password::RESET_LINK_SENT) {
+            return response()->json([
+                'status' => false,
+                'message' => __($status),
+            ], 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Link reset password berhasil dikirim ke email kamu.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $data = $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'password' => ['required', 'confirmed', 'min:6'],
+        ]);
+
+        $status = Password::reset(
+            $data,
+            function (User $user, string $password) {
+                $user->forceFill([
+                    'password' => Hash::make($password),
+                    'remember_token' => Str::random(60),
+                ])->save();
+
+                $user->tokens()->delete();
+
+                event(new PasswordReset($user));
+            }
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            return response()->json([
+                'status' => false,
+                'message' => __($status),
+            ], 422);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Password berhasil direset. Silakan login dengan password baru.',
+        ]);
+    }
+
     public function updateProfile(Request $request)
     {
         $user = $request->user();
+        $originalEmail = (string) $user->email;
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -176,12 +309,22 @@ class UserAuthController extends Controller
             $payload['password'] = Hash::make($data['password']);
         }
 
+        if ($originalEmail !== (string) $data['email']) {
+            $payload['email_verified_at'] = null;
+        }
+
         $user->update($payload);
         $user->refresh();
 
+        if ($originalEmail !== (string) $user->email) {
+            $user->sendEmailVerificationNotification();
+        }
+
         return response()->json([
             'status' => true,
-            'message' => 'Profil berhasil diperbarui',
+            'message' => $originalEmail !== (string) $user->email
+                ? 'Profil berhasil diperbarui. Email berubah, silakan verifikasi ulang email baru kamu.'
+                : 'Profil berhasil diperbarui',
             'data' => [
                 'user' => $this->serializeUser($user),
             ],
@@ -209,6 +352,8 @@ class UserAuthController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'email_verified_at' => optional($user->email_verified_at)->toDateTimeString(),
+            'is_email_verified' => $user->hasVerifiedEmail(),
             'role' => $user->role,
             'coin_balance' => (int) ($user->coin_balance ?? 0),
             'last_login' => optional($user->last_login)->toDateTimeString(),
@@ -222,5 +367,15 @@ class UserAuthController extends Controller
             'district_code' => $user->district_code,
             'district_name' => $user->district_name,
         ];
+    }
+
+    private function redirectToFrontend(string $type, string $status)
+    {
+        $frontendUserUrl = rtrim(
+            (string) (env('FRONTEND_USER_URL') ?: env('FRONTEND_URL') ?: 'http://localhost:5174'),
+            '/'
+        );
+
+        return redirect()->away($frontendUserUrl."/login?".$type."=".$status);
     }
 }

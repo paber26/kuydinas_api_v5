@@ -76,6 +76,7 @@ class GoogleAuthController extends Controller
         $user->provider = 'google';
         $user->provider_id = $googleUser->getId();
         $user->image = $this->resolveGoogleAvatarUrl($googleUser) ?: $user->image;
+        $user->email_verified_at = $user->email_verified_at ?: now();
         $user->is_active = $isActive;
         $user->save();
 
@@ -193,6 +194,9 @@ class GoogleAuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'image' => $user->image,
+                'provider' => $user->provider,
+                'email_verified_at' => optional($user->email_verified_at)->toDateTimeString(),
+                'is_email_verified' => $user->hasVerifiedEmail(),
             ]),
         ]);
 

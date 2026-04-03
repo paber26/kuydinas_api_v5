@@ -22,6 +22,7 @@ class DashboardController extends Controller
             ->get();
         $currentTryout = $this->currentTryout($user->id);
         $promoTryout = $this->recommendedPromoTryout($user->id);
+        $promoTryouts = $this->discountedPromoTryouts($user->id);
 
         $latestRank = null;
         $latestTopPercentage = null;
@@ -62,8 +63,9 @@ class DashboardController extends Controller
                 'current_tryout' => $currentTryout,
                 'primary_action' => $this->primaryAction($currentTryout, $latestCompletedResult, $promoTryout),
                 'latest_tryout' => $this->latestTryoutPayload($latestCompletedResult),
-                'learning_path' => $this->learningPathPayload($latestCompletedResult),
+                'learning_path' => $this->learningPathPayload($user->id),
                 'promo_tryout' => $this->promoPayload($promoTryout),
+                'promo_tryouts' => $promoTryouts->map(fn (Tryout $tryout) => $this->promoPayload($tryout))->all(),
             ],
         ]);
     }
@@ -108,48 +110,65 @@ class DashboardController extends Controller
 
     private function currentTryout(int $userId): ?array
     {
-        $activeSession = TryoutResult::with('tryout')
+        $registrations = TryoutRegistration::with('tryout')
             ->where('user_id', $userId)
-            ->when(
-                TryoutResult::hasStatusColumn(),
-                fn($query) => $query->where('status', 'in_progress')
-            )
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
-            ->first();
+            ->get();
 
-        if ($activeSession?->tryout) {
-            return [
-                'tryout_id' => $activeSession->tryout->id,
-                'title' => $activeSession->tryout->title,
-                'status' => 'in_progress',
-                'duration' => (int) ($activeSession->tryout->duration ?? 0),
-                'question_count' => $this->questionCount($activeSession->tryout),
-            ];
-        }
-
-        $registration = TryoutRegistration::with('tryout')
-            ->where('user_id', $userId)
-            ->where(function ($query) {
-                $query
-                    ->whereNull('status')
-                    ->orWhere('status', '!=', 'completed');
-            })
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$registration?->tryout) {
+        if ($registrations->isEmpty()) {
             return null;
         }
 
-        return [
-            'tryout_id' => $registration->tryout->id,
-            'title' => $registration->tryout->title,
-            'status' => 'registered',
-            'duration' => (int) ($registration->tryout->duration ?? 0),
-            'question_count' => $this->questionCount($registration->tryout),
-        ];
+        $tryouts = $registrations
+            ->map(function (TryoutRegistration $registration) use ($userId) {
+                $tryout = $registration->tryout;
+
+                if (!$tryout) {
+                    return null;
+                }
+
+                $activeSession = TryoutResult::forUserTryout($userId, $registration->tryout_id)
+                    ->inProgress()
+                    ->latestAttempt()
+                    ->first();
+
+                $latestCompletedSession = TryoutResult::forUserTryout($userId, $registration->tryout_id)
+                    ->completed()
+                    ->latestAttempt()
+                    ->first();
+
+                $effectiveStatus = $registration->status ?: 'not_started';
+
+                if ($activeSession) {
+                    $effectiveStatus = 'in_progress';
+                } elseif ($registration->status === 'completed' || $latestCompletedSession) {
+                    $effectiveStatus = 'completed';
+                }
+
+                return [
+                    'tryout_id' => $tryout->id,
+                    'title' => $tryout->title,
+                    'status' => $effectiveStatus,
+                    'duration' => (int) ($tryout->duration ?? 0),
+                    'question_count' => $this->questionCount($tryout),
+                    'updated_at' => optional($registration->updated_at)->toDateTimeString(),
+                ];
+            })
+            ->filter()
+            ->values();
+
+        $inProgress = $tryouts->firstWhere('status', 'in_progress');
+        if ($inProgress) {
+            return $inProgress;
+        }
+
+        $registered = $tryouts->first(fn (array $tryout) => $tryout['status'] !== 'completed');
+        if ($registered) {
+            return $registered;
+        }
+
+        return null;
     }
 
     private function primaryAction(?array $currentTryout, ?TryoutResult $latestCompletedResult, ?Tryout $promoTryout): array
@@ -215,41 +234,111 @@ class DashboardController extends Controller
         ];
     }
 
-    private function learningPathPayload(?TryoutResult $result): array
+    private function learningPathPayload(int $userId): array
     {
-        $defaults = collect(['TWK', 'TIU', 'TKP'])
-            ->map(fn(string $category) => $this->emptyCategoryPayload($category))
-            ->values()
+        $today = now()->startOfDay();
+        $registeredTryoutIds = TryoutRegistration::query()
+            ->where('user_id', $userId)
+            ->pluck('tryout_id')
+            ->map(fn ($id) => (int) $id)
             ->all();
 
-        if (!$result?->tryout || !$result->tryout->relationLoaded('soals')) {
-            return $defaults;
-        }
-
-        $metrics = $this->buildCategoryMetrics($result, $result->tryout);
-
-        return collect(['TWK', 'TIU', 'TKP'])
-            ->map(function (string $category) use ($metrics) {
-                $score = (int) ($metrics['category_scores'][$category] ?? 0);
-                $maxScore = max((int) ($metrics['category_max_scores'][$category] ?? 0), 0);
-                $progress = $maxScore > 0
-                    ? min(100, (int) round(($score / $maxScore) * 100))
-                    : 0;
-                $status = $progress >= 75 ? 'strong' : ($progress >= 50 ? 'medium' : 'weak');
+        return Tryout::query()
+            ->where('type', 'free')
+            ->where('status', 'publish')
+            ->where(function ($query) {
+                $query
+                    ->whereNotNull('free_start_date')
+                    ->orWhereNotNull('free_valid_until');
+            })
+            ->orderByRaw('CASE WHEN free_start_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('free_start_date')
+            ->orderBy('free_valid_until')
+            ->orderByDesc('id')
+            ->get()
+            ->map(function (Tryout $tryout, int $index) use ($today, $registeredTryoutIds) {
+                $startDate = $tryout->free_start_date?->copy()?->startOfDay();
+                $endDate = $tryout->free_valid_until?->copy()?->startOfDay();
+                $status = $this->resolveAccessStatus($today, $startDate, $endDate);
+                $isRegistered = in_array((int) $tryout->id, $registeredTryoutIds, true);
 
                 return [
-                    'category' => $category,
-                    'title' => $this->categoryTitle($category),
+                    'id' => $tryout->id,
+                    'key' => sprintf('tryout-%s', $tryout->id),
+                    'batch' => $index + 1,
+                    'title' => $tryout->title,
+                    'start' => optional($startDate)->toDateString(),
+                    'end' => optional($endDate)->toDateString(),
+                    'range_label' => $this->formatAccessRangeLabel($startDate, $endDate),
                     'status' => $status,
-                    'status_label' => $this->categoryStatusLabel($status),
-                    'description' => $this->categoryDescription($category, $status),
-                    'progress' => $progress,
-                    'score' => $score,
-                    'max_score' => $maxScore,
+                    'status_label' => $this->accessStatusLabel($status),
+                    'is_registered' => $isRegistered,
+                    'registration_label' => $isRegistered ? 'Sudah terdaftar' : 'Belum terdaftar',
+                    'is_next' => false,
                 ];
             })
+            ->sortBy([
+                fn (array $item) => $this->accessStatusPriority($item['status']),
+                fn (array $item) => $item['start'] ?? '9999-12-31',
+                fn (array $item) => $item['end'] ?? '9999-12-31',
+            ])
             ->values()
+            ->map(function (array $item, int $index) {
+                return [
+                    ...$item,
+                    'batch' => $index + 1,
+                ];
+            })
             ->all();
+    }
+
+    private function resolveAccessStatus($today, $startDate, $endDate): string
+    {
+        if ($startDate && $today->lt($startDate)) {
+            return 'upcoming';
+        }
+
+        if ($endDate && $today->gt($endDate)) {
+            return 'past';
+        }
+
+        return 'active';
+    }
+
+    private function accessStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'upcoming' => 'Akan datang',
+            'past' => 'Sudah berakhir',
+            default => 'Sedang aktif',
+        };
+    }
+
+    private function accessStatusPriority(string $status): int
+    {
+        return match ($status) {
+            'active' => 0,
+            'upcoming' => 1,
+            'past' => 2,
+            default => 3,
+        };
+    }
+
+    private function formatAccessRangeLabel($startDate, $endDate): string
+    {
+        if (!$startDate && !$endDate) {
+            return 'Tanpa batas waktu';
+        }
+
+        $startLabel = $startDate
+            ? $startDate->locale('id')->translatedFormat('j F Y')
+            : 'Sekarang';
+
+        $endLabel = $endDate
+            ? $endDate->locale('id')->translatedFormat('j F Y')
+            : 'Seterusnya';
+
+        return sprintf('%s - %s', $startLabel, $endLabel);
     }
 
     private function recommendedPromoTryout(int $userId): ?Tryout
@@ -275,6 +364,24 @@ class DashboardController extends Controller
             ->first();
     }
 
+    private function discountedPromoTryouts(int $userId)
+    {
+        $registeredTryoutIds = TryoutRegistration::where('user_id', $userId)->pluck('tryout_id');
+
+        return Tryout::query()
+            ->where('status', 'publish')
+            ->where('type', 'premium')
+            ->whereRaw('COALESCE(discount, 0) > 0')
+            ->when(
+                $registeredTryoutIds->isNotEmpty(),
+                fn($query) => $query->whereNotIn('id', $registeredTryoutIds)
+            )
+            ->orderByDesc('discount')
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get();
+    }
+
     private function promoPayload(?Tryout $tryout): ?array
     {
         if (!$tryout) {
@@ -294,6 +401,8 @@ class DashboardController extends Controller
             'final_price' => $finalPrice,
             'free_start_date' => optional($tryout->free_start_date)->toDateString(),
             'free_valid_until' => optional($tryout->free_valid_until)->toDateString(),
+            'info_ig' => $tryout->info_ig,
+            'info_wa' => $tryout->info_wa,
             'duration' => (int) ($tryout->duration ?? 0),
             'question_count' => $this->questionCount($tryout),
         ];
