@@ -32,9 +32,15 @@ class TryoutController extends Controller
                     // fields tambahan untuk frontend
                     'subtitle' => 'Simulasi lengkap seperti ujian asli',
                     'category' => 'SKD CPNS',
+                    'type' => $tryout->type,
 
                     'price' => $tryout->price ?? 0,
                     'discount' => $tryout->discount,
+                    'quota' => $tryout->quota,
+                    'info_ig' => $tryout->info_ig,
+                    'info_wa' => $tryout->info_wa,
+                    'free_start_date' => optional($tryout->free_start_date)->toDateTimeString(),
+                    'free_valid_until' => optional($tryout->free_valid_until)->toDateTimeString(),
 
                     'isFree' => $tryout->type === 'free',
 

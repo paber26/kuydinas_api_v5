@@ -38,6 +38,11 @@ Route::prefix('user')->group(function () {
 
     Route::post('/register', [UserAuthController::class , 'register']);
     Route::post('/login', [UserAuthController::class , 'login']);
+    Route::post('/forgot-password', [UserAuthController::class , 'forgotPassword']);
+    Route::post('/reset-password', [UserAuthController::class , 'resetPassword']);
+    Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'verifyEmail'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
 
     Route::get('/google/redirect', [GoogleAuthController::class , 'redirect'])->defaults('scope', 'user');
     Route::get('/google/callback', [GoogleAuthController::class , 'callback'])->defaults('scope', 'user');
@@ -49,6 +54,7 @@ Route::prefix('user')->group(function () {
             Route::get('/me', [UserAuthController::class , 'me']);
             Route::put('/profile', [UserAuthController::class , 'updateProfile']);
             Route::post('/logout', [UserAuthController::class , 'logout']);
+            Route::post('/email/verification-notification', [UserAuthController::class, 'sendVerificationNotification']);
 
         }
         );

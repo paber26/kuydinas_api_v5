@@ -151,14 +151,23 @@ class TryoutRegistrationController extends Controller
                     ? min((int) round(($answeredCount / $questionCount) * 100), 100)
                     : 0;
 
-                if ($registration->status === 'completed') {
+                $effectiveStatus = $registration->status ?: 'not_started';
+
+                if ($activeSession) {
+                    $effectiveStatus = 'in_progress';
+                } elseif ($registration->status === 'completed' || $latestCompletedSession) {
+                    $effectiveStatus = 'completed';
+                }
+
+                if ($effectiveStatus === 'completed') {
                     $progress = 100;
                 }
 
                 return [
                     'id' => $registration->id,
                     'tryout_id' => $registration->tryout_id,
-                    'status' => $registration->status,
+                    'status' => $effectiveStatus,
+                    'registration_status' => $registration->status,
                     'registered_at' => $registration->registered_at,
                     'started_at' => $registration->started_at,
                     'finished_at' => $registration->finished_at,
