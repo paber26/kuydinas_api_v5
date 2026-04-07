@@ -48,7 +48,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Payload webhook Midtrans tidak lengkap.',
-            ], 422);
+            ], 200);
         }
 
         $isSignatureValid = $this->midtransSnapService->verifySignature($orderId, $statusCode, $grossAmount, $signatureKey);
@@ -68,7 +68,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Signature Midtrans tidak valid.',
-            ], 403);
+            ], 200);
         }
 
         $result = DB::transaction(function () use ($payload, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
@@ -86,10 +86,10 @@ class PaymentController extends Controller
                     'order_id' => $orderId,
                 ]);
 
-                throw new HttpResponseException(response()->json([
-                    'status' => false,
+                return [
+                    'error' => true,
                     'message' => 'Transaksi top up tidak ditemukan.',
-                ], 404));
+                ];
             }
 
             Log::info('Midtrans webhook matched topup transaction.', [
@@ -108,10 +108,10 @@ class PaymentController extends Controller
                     'received_gross_amount' => $grossAmount,
                 ]);
 
-                throw new HttpResponseException(response()->json([
-                    'status' => false,
-                    'message' => 'Nominal webhook tidak sesuai dengan transaksi top up.',
-                ], 422));
+                return [
+                    'error' => true,
+                    'message' => 'Nominal webhook tidak sesuai.',
+                ];
             }
 
             $isSuccess = $this->isSuccessfulPaymentStatus($transactionStatus, $fraudStatus);
@@ -172,7 +172,14 @@ class PaymentController extends Controller
 
             $user = User::whereKey($topup->user_id)
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+
+            if (!$user) {
+                return [
+                    'error' => true,
+                    'message' => 'User tidak ditemukan.',
+                ];
+            }
 
             $balanceBefore = (int) ($user->coin_balance ?? 0);
             $creditedCoin = (int) $topup->coin_amount + (int) $topup->bonus_coin;
@@ -210,6 +217,13 @@ class PaymentController extends Controller
                 'balance_after' => $balanceAfter,
             ];
         });
+
+        if (isset($result['error']) && $result['error']) {
+            return response()->json([
+                'status' => false,
+                'message' => $result['message'],
+            ], 200);
+        }
 
         return response()->json([
             'status' => true,
