@@ -25,19 +25,28 @@ Route utama:
 
 - `POST /api/user/register`
 - `POST /api/user/login`
+- `POST /api/user/forgot-password`
+- `POST /api/user/reset-password`
+- `GET /api/user/email/verify/{id}/{hash}`
 - `GET /api/user/google/redirect`
 - `GET /api/user/google/callback`
+- `GET /api/user/auth/google/redirect`
+- `GET /api/user/auth/google/callback`
 - `GET /api/user/me`
 - `PUT /api/user/profile`
 - `POST /api/user/logout`
+- `POST /api/user/email/verification-notification`
 
 Fitur:
 
 - register user
 - login user
 - login Google untuk user
+- verifikasi email via link dari backend (signed URL)
+- kirim ulang email verifikasi (untuk akun yang belum verified)
+- forgot password dan reset password (khusus akun manual yang sudah verified)
 - ambil profil user aktif
-- update profil user
+- update profil user (nama, email, password, whatsapp, dan domisili)
 - logout berbasis Sanctum
 
 ### 3. Autentikasi admin
@@ -52,6 +61,8 @@ Route utama:
 - `POST /api/admin/login`
 - `GET /api/admin/google/redirect`
 - `GET /api/admin/google/callback`
+- `GET /api/admin/auth/google/redirect`
+- `GET /api/admin/auth/google/callback`
 - `GET /api/admin/me`
 - `POST /api/admin/logout`
 
@@ -77,7 +88,25 @@ Fitur:
 - ringkasan dashboard user
 - data statistik, tryout terakhir, tryout aktif, learning path, dan promo
 
-### 5. Tryout untuk user
+### 5. Data wilayah (provinsi/kabupaten/kecamatan)
+
+Controller utama:
+
+- `App\Http\Controllers\Api\RegionController`
+
+Route utama:
+
+- `GET /api/regions/provinces`
+- `GET /api/regions/regencies/{provinceCode}`
+- `GET /api/regions/districts/{regencyCode}`
+
+Fitur:
+
+- proxy data wilayah dari layanan eksternal (default: `https://wilayah.id/api`)
+- response dibungkus dalam format `{ status, data }`
+- dipakai untuk melengkapi domisili pada profil user
+
+### 6. Tryout untuk user
 
 Controller utama:
 
@@ -114,7 +143,7 @@ Fitur:
 - ranking dan posisi user
 - riwayat tryout user
 
-### 6. Masa berlaku tryout gratis
+### 7. Masa berlaku tryout gratis
 
 Model dan controller terkait:
 
@@ -125,12 +154,15 @@ Model dan controller terkait:
 
 Fitur:
 
-- tryout gratis memiliki `free_valid_days`
+- tryout gratis memiliki konfigurasi masa akses:
+    - `free_start_date` (opsional) → akses dibuka mulai tanggal ini
+    - `free_valid_until` (opsional) → akses ditutup lewat tanggal ini
+    - `free_valid_days` (legacy) → dipakai untuk menghitung `expires_at` saat registrasi
 - saat user registrasi tryout gratis, backend menyimpan `expires_at`
 - backend menolak start jika masa berlaku habis
 - registrasi ulang tryout gratis dapat memperbarui masa aktif jika implementasi mengizinkan
 
-### 7. Bank soal admin
+### 8. Bank soal admin
 
 Controller utama:
 
@@ -155,7 +187,7 @@ Fitur:
 - konversi otomatis embedded image base64 menjadi file storage saat create atau update
 - pembatasan ukuran gambar per file
 
-### 8. Builder tryout admin
+### 9. Builder tryout admin
 
 Controller utama:
 
@@ -172,6 +204,7 @@ Route utama:
 - `DELETE /api/admin/tryouts/{id}/detach/{soalId}`
 - `PUT /api/admin/tryouts/{id}/reorder`
 - `POST /api/admin/tryouts/{id}/publish`
+- `GET /api/admin/tryouts/{id}/ranking`
 
 Fitur:
 
@@ -179,11 +212,13 @@ Fitur:
 - target jumlah soal per kategori
 - tipe gratis dan premium
 - harga, diskon, kuota, dan durasi
+- masa akses tryout gratis (`free_start_date` dan `free_valid_until`)
+- link informasi untuk tryout gratis (`info_ig` dan `info_wa`)
 - attach dan detach soal ke tryout
 - reorder soal
 - validasi komposisi sebelum publish
 
-### 9. Wallet dan top up
+### 10. Wallet dan top up
 
 Controller utama:
 
@@ -203,9 +238,11 @@ Route utama:
 - `POST /api/wallet/redeem-tryout/{id}`
 - `POST /api/payments/midtrans/webhook`
 - `GET /api/admin/topup-packages`
+- `GET /api/admin/topup-packages/{id}`
 - `POST /api/admin/topup-packages`
 - `PUT /api/admin/topup-packages/{id}`
 - `DELETE /api/admin/topup-packages/{id}`
+- `GET /api/admin/topup-transactions/summary`
 
 Fitur:
 
@@ -218,8 +255,9 @@ Fitur:
 - penukaran koin menjadi akses tryout premium
 - webhook pembayaran dari Midtrans
 - pengelolaan paket top up dari admin
+- ringkasan transaksi top up untuk kebutuhan KPI dashboard admin
 
-### 10. Ranking
+### 11. Ranking
 
 Controller utama:
 
@@ -230,7 +268,7 @@ Fitur:
 - daftar ranking peserta per tryout
 - posisi ranking user yang sedang login
 
-### 11. User management admin
+### 12. User management admin
 
 Controller utama:
 

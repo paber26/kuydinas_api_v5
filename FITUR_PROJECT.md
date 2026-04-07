@@ -26,6 +26,8 @@ Fitur yang tersedia:
 - login user dengan validasi akun aktif
 - pembatasan role agar endpoint user hanya dipakai akun `user`
 - endpoint profil user login (`/user/me`)
+- verifikasi email (link verifikasi dari backend) dan kirim ulang email verifikasi
+- forgot password dan reset password (khusus akun manual yang emailnya sudah terverifikasi)
 - logout user
 - pembuatan token API menggunakan Sanctum
 - pencatatan device login ke tabel `user_devices`
@@ -103,6 +105,8 @@ Atribut tryout yang sudah dipakai di code:
 - diskon
 - target jumlah soal per kategori
 - passing grade per kategori
+- masa akses tryout gratis: `free_start_date` dan `free_valid_until` (opsional)
+- link informasi tryout gratis: `info_ig` dan `info_wa` (opsional)
 
 Validasi penting:
 
@@ -214,20 +218,24 @@ Status pembayaran yang terlihat di code:
 - `cancelled`
 - `expired`
 
-### Pembaruan Terbaru (Maret 2026)
+### Pembaruan Terbaru (Maret–April 2026)
 
 - Endpoint sinkronisasi manual status Midtrans:
-    - `POST /api/wallet/topup/{id}/sync` untuk menarik status transaksi langsung dari API Midtrans dan mengkredit koin jika status sukses (`settlement/capture`). Lihat [WalletController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/WalletController.php#L234-L318) dan [api.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/routes/api.php#L95-L99).
+    - `POST /api/wallet/topup/{id}/sync` untuk menarik status transaksi langsung dari API Midtrans dan mengkredit koin jika status sukses (`settlement/capture`). Lihat [WalletController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/WalletController.php#L236-L319) dan [api.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/routes/api.php#L95-L140).
 - Verifikasi signature webhook Midtrans dan pengecekan nominal:
-    - Webhook memverifikasi `signature_key` dan menyamakan `gross_amount` sebelum memproses kredit koin. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/PaymentController.php#L1-L224).
+    - Webhook memverifikasi `signature_key` dan menyamakan `gross_amount` sebelum memproses kredit koin. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/PaymentController.php#L22-L244).
 - Pemetaan status dan idempoten kredit:
-    - Status Midtrans dipetakan ke status lokal (`paid/pending/failed/...`) dan sistem memastikan kredit koin hanya terjadi sekali. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Http/Controllers/Api/PaymentController.php#L225-L244).
+    - Status Midtrans dipetakan ke status lokal (`paid/pending/failed/...`) dan sistem memastikan kredit koin hanya terjadi sekali. Lihat [PaymentController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/PaymentController.php#L117-L244).
 - Layanan status Midtrans Snap:
-    - Penambahan fungsi `getTransactionStatus` untuk memanggil `v2/{order_id}/status`. Lihat [MidtransSnapService.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/app/Services/MidtransSnapService.php#L27-L49).
+    - Penambahan fungsi `getTransactionStatus` untuk memanggil `v2/{order_id}/status`. Lihat [MidtransSnapService.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Services/MidtransSnapService.php#L29-L37).
 - Konfigurasi CORS produksi:
-    - Domain frontend yang diizinkan: `https://kuydinasclientv5.vercel.app`. `supports_credentials` diaktifkan. Lihat [cors.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/config/cors.php).
+    - Domain frontend yang diizinkan dan pengaturan CORS ada di [cors.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/config/cors.php).
 - Callback Snap:
-    - `wallet.topup_finish_url` diambil dari `.env` melalui [wallet.php](file:///Users/marchelinoraco/Documents/2026/kuy/be-kuy/config/wallet.php).
+    - `wallet.topup_finish_url` diambil dari `.env` melalui [wallet.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/config/wallet.php).
+- Masa akses tryout gratis dan link informasi:
+    - Penambahan `free_start_date`, `free_valid_until`, `info_ig`, dan `info_wa` pada tryout untuk mengatur kapan akses gratis dibuka/ditutup serta link panduan. Lihat [Tryout.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Models/Tryout.php#L7-L33) dan [TryoutController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/TryoutController.php#L69-L119).
+- Profil user lebih lengkap:
+    - Penambahan field kontak dan domisili user (WhatsApp, provinsi/kabupaten/kecamatan) serta endpoint proxy wilayah. Lihat [UserAuthController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/User/UserAuthController.php#L135-L381) dan [RegionController.php](file:///Users/marchelinoraco/Documents/2026/kuy/kuydinas_api_v5/app/Http/Controllers/Api/RegionController.php#L1-L59).
 
 ## Entitas Data yang Sudah Dipakai
 

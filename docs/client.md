@@ -18,6 +18,9 @@ Fitur:
 - login user dengan kredensial biasa
 - register akun baru
 - login dengan Google
+- verifikasi email dari backend (signed URL)
+- kirim ulang email verifikasi dari halaman profil
+- forgot password dan reset password (khusus akun manual yang sudah verified)
 - route guard berbasis token di `localStorage`
 - redirect otomatis ke dashboard jika user sudah login
 
@@ -48,6 +51,8 @@ Fitur:
 
 - menampilkan data profil user
 - mendukung pembaruan data profil melalui API user
+- melengkapi kontak dan domisili (WhatsApp, provinsi, kabupaten/kota, kecamatan)
+- memuat data wilayah dari endpoint `/api/regions/*` untuk dropdown domisili
 
 ### 4. Promo tryout dan katalog tryout
 
