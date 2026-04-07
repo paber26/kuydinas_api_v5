@@ -16,6 +16,7 @@ return [
         'http://localhost:5173',
         'https://kuymin.kuydinas.id',
         'https://tryout.kuydinas.id',
+        'https://kuydinas-client-v5.vercel.app/',
     ]), fn ($origin) => filled($origin))),
 
     'allowed_origins_patterns' => [
