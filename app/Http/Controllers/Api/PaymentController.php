@@ -10,7 +10,6 @@ use App\Services\MidtransSnapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\Exceptions\HttpResponseException;
 
 class PaymentController extends Controller
 {
@@ -133,7 +132,7 @@ class PaymentController extends Controller
                 'transaction_status' => $transactionStatus,
                 'fraud_status' => $fraudStatus ?: $topup->fraud_status,
                 'payment_type' => $payload['payment_type'] ?? $topup->payment_type,
-                'raw_notification' => $payload,
+                'raw_notification' => json_encode($payload),
                 'paid_at' => $isSuccess ? ($topup->paid_at ?? now()) : $topup->paid_at,
                 'expired_at' => $transactionStatus === 'expire' ? now() : $topup->expired_at,
             ]);
