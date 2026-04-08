@@ -10,11 +10,6 @@ use App\Services\MidtransSnapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-<<<<<<< HEAD
-=======
-use Illuminate\Http\Exceptions\HttpResponseException;
-use Throwable;
->>>>>>> wallet_v2
 
 class PaymentController extends Controller
 {
@@ -26,7 +21,6 @@ class PaymentController extends Controller
     public function midtransWebhook(Request $request)
     {
         $payload = $request->all();
-        $payloadJson = $this->safeJsonEncode($payload);
         $transactionStatus = (string) ($payload['transaction_status'] ?? 'pending');
         $fraudStatus = (string) ($payload['fraud_status'] ?? '');
 
@@ -39,8 +33,7 @@ class PaymentController extends Controller
             'order_id' => $orderId ?: null,
             'transaction_status' => $transactionStatus,
             'payment_type' => $payload['payment_type'] ?? null,
-            'status_code' => $statusCode ?: null,
-            'gross_amount' => $grossAmount ?: null,
+            'payload' => $payload,
         ]);
 
         if (!$orderId || !$statusCode || !$grossAmount || !$signatureKey) {
@@ -77,8 +70,7 @@ class PaymentController extends Controller
             ], 200);
         }
 
-        try {
-            $result = DB::transaction(function () use ($payload, $payloadJson, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
+        $result = DB::transaction(function () use ($payload, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
             Log::info('Processing Midtrans webhook order.', [
                 'order_id' => $orderId,
                 'transaction_status' => $transactionStatus,
@@ -140,11 +132,7 @@ class PaymentController extends Controller
                 'transaction_status' => $transactionStatus,
                 'fraud_status' => $fraudStatus ?: $topup->fraud_status,
                 'payment_type' => $payload['payment_type'] ?? $topup->payment_type,
-<<<<<<< HEAD
                 'raw_notification' => json_encode($payload),
-=======
-                'raw_notification' => $payloadJson !== '' ? json_decode($payloadJson, true) : null,
->>>>>>> wallet_v2
                 'paid_at' => $isSuccess ? ($topup->paid_at ?? now()) : $topup->paid_at,
                 'expired_at' => $transactionStatus === 'expire' ? now() : $topup->expired_at,
             ]);
@@ -227,22 +215,7 @@ class PaymentController extends Controller
                 'local_status' => $topup->status,
                 'balance_after' => $balanceAfter,
             ];
-            });
-        } catch (HttpResponseException $e) {
-            throw $e;
-        } catch (Throwable $e) {
-            Log::error('Midtrans webhook failed with unhandled exception.', [
-                'order_id' => $orderId ?: null,
-                'transaction_status' => $transactionStatus,
-                'message' => $e->getMessage(),
-                'exception' => get_class($e),
-            ]);
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Webhook Midtrans gagal diproses di server.',
-            ], 500);
-        }
+        });
 
         if (isset($result['error']) && $result['error']) {
             return response()->json([
@@ -280,19 +253,5 @@ class PaymentController extends Controller
             'expire' => 'expired',
             default => $currentStatus,
         };
-    }
-
-    private function safeJsonEncode(mixed $value): string
-    {
-        try {
-            $encoded = json_encode(
-                $value,
-                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
-            );
-
-            return $encoded === false ? '' : $encoded;
-        } catch (Throwable $e) {
-            return '';
-        }
     }
 }
