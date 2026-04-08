@@ -10,7 +10,8 @@ use App\Services\MidtransSnapService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-// sdas
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Throwable;
 
 // asdasd
 // sada
@@ -25,6 +26,7 @@ class PaymentController extends Controller
     public function midtransWebhook(Request $request)
     {
         $payload = $request->all();
+        $payloadJson = $this->safeJsonEncode($payload);
         $transactionStatus = (string) ($payload['transaction_status'] ?? 'pending');
         $fraudStatus = (string) ($payload['fraud_status'] ?? '');
 
@@ -37,7 +39,8 @@ class PaymentController extends Controller
             'order_id' => $orderId ?: null,
             'transaction_status' => $transactionStatus,
             'payment_type' => $payload['payment_type'] ?? null,
-            'payload' => $payload,
+            'status_code' => $statusCode ?: null,
+            'gross_amount' => $grossAmount ?: null,
         ]);
 
         if (!$orderId || !$statusCode || !$grossAmount || !$signatureKey) {
@@ -51,7 +54,7 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Payload webhook Midtrans tidak lengkap.',
-            ], 200);
+            ], 422);
         }
 
         $isSignatureValid = $this->midtransSnapService->verifySignature($orderId, $statusCode, $grossAmount, $signatureKey);
@@ -71,10 +74,11 @@ class PaymentController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Signature Midtrans tidak valid.',
-            ], 200);
+            ], 403);
         }
 
-        $result = DB::transaction(function () use ($payload, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
+        try {
+            $result = DB::transaction(function () use ($payload, $payloadJson, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
             Log::info('Processing Midtrans webhook order.', [
                 'order_id' => $orderId,
                 'transaction_status' => $transactionStatus,
@@ -89,10 +93,10 @@ class PaymentController extends Controller
                     'order_id' => $orderId,
                 ]);
 
-                return [
-                    'error' => true,
+                throw new HttpResponseException(response()->json([
+                    'status' => false,
                     'message' => 'Transaksi top up tidak ditemukan.',
-                ];
+                ], 404));
             }
 
             Log::info('Midtrans webhook matched topup transaction.', [
@@ -111,10 +115,10 @@ class PaymentController extends Controller
                     'received_gross_amount' => $grossAmount,
                 ]);
 
-                return [
-                    'error' => true,
-                    'message' => 'Nominal webhook tidak sesuai.',
-                ];
+                throw new HttpResponseException(response()->json([
+                    'status' => false,
+                    'message' => 'Nominal webhook tidak sesuai dengan transaksi top up.',
+                ], 422));
             }
 
             $isSuccess = $this->isSuccessfulPaymentStatus($transactionStatus, $fraudStatus);
@@ -136,7 +140,7 @@ class PaymentController extends Controller
                 'transaction_status' => $transactionStatus,
                 'fraud_status' => $fraudStatus ?: $topup->fraud_status,
                 'payment_type' => $payload['payment_type'] ?? $topup->payment_type,
-                'raw_notification' => json_encode($payload),
+                'raw_notification' => $payloadJson !== '' ? json_decode($payloadJson, true) : null,
                 'paid_at' => $isSuccess ? ($topup->paid_at ?? now()) : $topup->paid_at,
                 'expired_at' => $transactionStatus === 'expire' ? now() : $topup->expired_at,
             ]);
@@ -175,14 +179,7 @@ class PaymentController extends Controller
 
             $user = User::whereKey($topup->user_id)
                 ->lockForUpdate()
-                ->first();
-
-            if (!$user) {
-                return [
-                    'error' => true,
-                    'message' => 'User tidak ditemukan.',
-                ];
-            }
+                ->firstOrFail();
 
             $balanceBefore = (int) ($user->coin_balance ?? 0);
             $creditedCoin = (int) $topup->coin_amount + (int) $topup->bonus_coin;
@@ -219,13 +216,21 @@ class PaymentController extends Controller
                 'local_status' => $topup->status,
                 'balance_after' => $balanceAfter,
             ];
-        });
+            });
+        } catch (HttpResponseException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            Log::error('Midtrans webhook failed with unhandled exception.', [
+                'order_id' => $orderId ?: null,
+                'transaction_status' => $transactionStatus,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
 
-        if (isset($result['error']) && $result['error']) {
             return response()->json([
                 'status' => false,
-                'message' => $result['message'],
-            ], 200);
+                'message' => 'Webhook Midtrans gagal diproses di server.',
+            ], 500);
         }
 
         return response()->json([
@@ -257,5 +262,19 @@ class PaymentController extends Controller
             'expire' => 'expired',
             default => $currentStatus,
         };
+    }
+
+    private function safeJsonEncode(mixed $value): string
+    {
+        try {
+            $encoded = json_encode(
+                $value,
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+            return $encoded === false ? '' : $encoded;
+        } catch (Throwable $e) {
+            return '';
+        }
     }
 }
