@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\Rule;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use App\Models\User;
 use App\Models\UserDevice;
 use Carbon\Carbon;
 use App\Http\Controllers\Controller;
+use Throwable;
 
 class UserAuthController extends Controller
 {
@@ -32,15 +34,29 @@ class UserAuthController extends Controller
             'is_active' => true
         ]);
 
-        $user->sendEmailVerificationNotification();
+        $verificationEmailSent = true;
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (Throwable $e) {
+            $verificationEmailSent = false;
+            Log::error('Failed to send verification email after registration.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+        }
         $token = $user->createToken('user_token')->plainTextToken;
 
         return response()->json([
             'status' => true,
-            'message' => 'Register berhasil. Silakan cek email untuk verifikasi akun.',
+            'message' => $verificationEmailSent
+                ? 'Register berhasil. Silakan cek email untuk verifikasi akun.'
+                : 'Register berhasil, namun email verifikasi gagal dikirim. Silakan coba kirim ulang dari halaman profil.',
             'data' => [
                 'user' => $this->serializeUser($user),
-                'token' => $token
+                'token' => $token,
+                'verification_email_sent' => $verificationEmailSent,
             ]
         ], 201);
     }
@@ -61,7 +77,7 @@ class UserAuthController extends Controller
 
         }
 
-        $user = Auth::user();
+        $user = User::where('email', $credentials['email'])->firstOrFail();
 
         // Cek apakah akun aktif
         if (!$user->is_active) {

@@ -235,79 +235,114 @@ class WalletController extends Controller
 
     public function syncTopup(Request $request, $id)
     {
-        $topup = TopupTransaction::where('user_id', $request->user()->id)
-            ->findOrFail($id);
-
-        if ($topup->status === 'paid') {
-            return response()->json([
-                'status' => true,
-                'message' => 'Transaksi sudah dibayar.',
-                'data' => [
-                    'status' => $topup->status,
-                ],
-            ]);
-        }
-
         try {
-            $statusResponse = $this->midtransSnapService->getTransactionStatus($topup->order_id);
-            $transactionStatus = $statusResponse['transaction_status'] ?? 'pending';
-            $fraudStatus = $statusResponse['fraud_status'] ?? '';
+            return DB::transaction(function () use ($request, $id) {
+                $topup = TopupTransaction::where('user_id', $request->user()->id)
+                    ->lockForUpdate()
+                    ->findOrFail($id);
 
-            $isSuccess = in_array($transactionStatus, ['settlement', 'capture']) && $fraudStatus !== 'challenge';
-
-            if ($isSuccess) {
-                DB::transaction(function () use ($topup, $transactionStatus, $fraudStatus) {
-                    $topup->refresh();
-                    if ($topup->status === 'paid') return;
-
-                    $user = User::whereKey($topup->user_id)->lockForUpdate()->firstOrFail();
-                    $balanceBefore = (int) ($user->coin_balance ?? 0);
-                    $creditedCoin = (int) $topup->coin_amount + (int) $topup->bonus_coin;
-                    $balanceAfter = $balanceBefore + $creditedCoin;
-
-                    $user->update(['coin_balance' => $balanceAfter]);
-
-                    $topup->update([
-                        'status' => 'paid',
-                        'transaction_status' => $transactionStatus,
-                        'fraud_status' => $fraudStatus,
-                        'paid_at' => now(),
+                if ($topup->status === 'paid') {
+                    return response()->json([
+                        'status' => true,
+                        'message' => 'Transaksi sudah dibayar.',
+                        'data' => [
+                            'status' => $topup->status,
+                            'transaction_status' => $topup->transaction_status,
+                            'credited' => true,
+                        ],
                     ]);
+                }
 
-                    WalletTransaction::create([
-                        'user_id' => $user->id,
-                        'type' => 'topup',
-                        'amount' => (int) $topup->gross_amount,
-                        'coin_amount' => $creditedCoin,
-                        'balance_before' => $balanceBefore,
-                        'balance_after' => $balanceAfter,
-                        'reference_type' => 'topup_transaction',
-                        'reference_id' => $topup->id,
-                        'description' => 'Sync Manual: Top up ' . $creditedCoin . ' coin via Midtrans',
+                $statusResponse = $this->midtransSnapService->getTransactionStatus($topup->order_id);
+                $transactionStatus = (string) ($statusResponse['transaction_status'] ?? 'pending');
+                $fraudStatus = (string) ($statusResponse['fraud_status'] ?? '');
+                $paymentType = (string) ($statusResponse['payment_type'] ?? '');
+
+                $isSuccess = in_array($transactionStatus, ['settlement', 'capture'], true) && $fraudStatus !== 'challenge';
+
+                $mappedStatus = match ($transactionStatus) {
+                    'settlement' => 'paid',
+                    'capture' => $fraudStatus === 'challenge' ? 'pending' : 'paid',
+                    'pending' => 'pending',
+                    'deny', 'failure' => 'failed',
+                    'cancel' => 'cancelled',
+                    'expire' => 'expired',
+                    default => $topup->status,
+                };
+
+                $topup->update([
+                    'status' => $mappedStatus,
+                    'transaction_status' => $transactionStatus,
+                    'fraud_status' => $fraudStatus ?: $topup->fraud_status,
+                    'payment_type' => $paymentType ?: $topup->payment_type,
+                    'paid_at' => $isSuccess ? ($topup->paid_at ?? now()) : $topup->paid_at,
+                    'expired_at' => $transactionStatus === 'expire' ? now() : $topup->expired_at,
+                ]);
+
+                if (!$isSuccess) {
+                    return response()->json([
+                        'status' => true,
+                        'message' => 'Transaksi belum dibayar atau status belum berubah.',
+                        'data' => [
+                            'status' => $topup->status,
+                            'transaction_status' => $transactionStatus,
+                            'credited' => false,
+                        ],
                     ]);
-                });
+                }
+
+                $alreadyCredited = WalletTransaction::where('reference_type', 'topup_transaction')
+                    ->where('reference_id', $topup->id)
+                    ->lockForUpdate()
+                    ->exists();
+
+                if ($alreadyCredited) {
+                    return response()->json([
+                        'status' => true,
+                        'message' => 'Transaksi sudah dikreditkan sebelumnya.',
+                        'data' => [
+                            'status' => $topup->status,
+                            'transaction_status' => $transactionStatus,
+                            'credited' => true,
+                        ],
+                    ]);
+                }
+
+                $user = User::whereKey($topup->user_id)->lockForUpdate()->firstOrFail();
+                $balanceBefore = (int) ($user->coin_balance ?? 0);
+                $creditedCoin = (int) $topup->coin_amount + (int) $topup->bonus_coin;
+                $balanceAfter = $balanceBefore + $creditedCoin;
+
+                $user->update(['coin_balance' => $balanceAfter]);
+
+                WalletTransaction::create([
+                    'user_id' => $user->id,
+                    'type' => 'topup',
+                    'amount' => (int) $topup->gross_amount,
+                    'coin_amount' => $creditedCoin,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'reference_type' => 'topup_transaction',
+                    'reference_id' => $topup->id,
+                    'description' => 'Sync Manual: Top up ' . $creditedCoin . ' coin via Midtrans',
+                ]);
 
                 return response()->json([
                     'status' => true,
                     'message' => 'Status transaksi berhasil diperbarui.',
                     'data' => [
                         'status' => 'paid',
+                        'transaction_status' => $transactionStatus,
+                        'credited' => true,
+                        'credited_coin' => $creditedCoin,
+                        'balance_after' => $balanceAfter,
                     ],
                 ]);
-            }
-
-            return response()->json([
-                'status' => true,
-                'message' => 'Transaksi belum dibayar atau status belum berubah.',
-                'data' => [
-                    'status' => $topup->status,
-                    'midtrans_status' => $transactionStatus,
-                ],
-            ]);
+            });
 
         } catch (Throwable $e) {
             Log::error('Gagal sinkronisasi status Midtrans: ' . $e->getMessage(), [
-                'order_id' => $topup->order_id,
+                'topup_transaction_id' => $id,
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -360,13 +395,6 @@ class WalletController extends Controller
 
             $tryout = Tryout::lockForUpdate()->findOrFail($id);
 
-            if ($tryout->type !== 'premium') {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Tryout ini bukan tryout premium.',
-                ], 422);
-            }
-
             if ($tryout->status !== 'publish') {
                 return response()->json([
                     'status' => false,
@@ -388,6 +416,13 @@ class WalletController extends Controller
 
             $price = (int) ($tryout->price ?? 0);
             $balanceBefore = (int) ($lockedUser->coin_balance ?? 0);
+
+            if ($tryout->type !== 'premium' && $price <= 0) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Tryout ini tidak membutuhkan koin. Silakan daftar gratis dari halaman tryout.',
+                ], 422);
+            }
 
             if ($price <= 0) {
                 return response()->json([
