@@ -388,7 +388,9 @@ class WalletController extends Controller
     {
         $user = $request->user();
 
-        $result = DB::transaction(function () use ($user, $id) {
+        $isPromoBypass = $request->boolean('is_promo_bypass');
+
+        $result = DB::transaction(function () use ($user, $id, $isPromoBypass) {
             $lockedUser = User::whereKey($user->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -415,6 +417,14 @@ class WalletController extends Controller
             }
 
             $price = (int) ($tryout->price ?? 0);
+            
+            if ($isPromoBypass) {
+                $price = (int) ceil($price * 0.5);
+            } else {
+                $discount = (int) ($tryout->discount ?? 0);
+                $price = max(0, $price - $discount);
+            }
+
             $balanceBefore = (int) ($lockedUser->coin_balance ?? 0);
 
             if ($tryout->type !== 'premium' && $price <= 0) {

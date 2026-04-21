@@ -71,7 +71,7 @@ class TryoutController extends Controller
         $request->validate([
             'title' => 'required',
             'duration' => 'required|integer',
-            'type' => 'required|in:free,premium',
+            'type' => 'required|in:free,premium,regular',
             'quota' => 'nullable|integer|min:1',
             'price' => 'nullable|integer|min:0',
             'discount' => 'nullable|integer|min:0|max:100',
@@ -554,7 +554,7 @@ class TryoutController extends Controller
             'twk_count' => 'required|integer|min:0',
             'tiu_count' => 'required|integer|min:0',
             'tkp_count' => 'required|integer|min:0',
-            'type' => 'nullable|in:free,premium',
+            'type' => 'nullable|in:free,premium,regular',
             'price' => 'nullable|integer|min:0',
             'discount' => 'nullable|integer|min:0|max:100',
             'free_start_date' => 'nullable|date',

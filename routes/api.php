@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\AdminUserController;
 use App\Http\Controllers\Api\AdminTopupTransactionController;
 use App\Http\Controllers\Api\TopupPackageController;
 use App\Http\Controllers\Api\AdminUploadController;
+use App\Http\Controllers\Api\AdminTryoutProgressController;
+use App\Http\Controllers\Api\AdminTryoutRegistrationController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
@@ -168,6 +170,7 @@ Route::middleware(['auth:sanctum', 'admin'])
         Route::get('/users/count', [AdminUserController::class , 'totalCount']);
         Route::get('/topup-transactions/summary', [AdminTopupTransactionController::class , 'summary']);
         Route::get('/users', [AdminUserController::class , 'index']);
+        Route::get('/users/{id}/tryout-summary', [AdminUserController::class , 'tryoutSummary']);
         Route::patch('/users/{id}', [AdminUserController::class , 'update']);
 
         /*
@@ -181,6 +184,11 @@ Route::middleware(['auth:sanctum', 'admin'])
         Route::put('/tryouts/{id}', [TryoutController::class , 'update']);
         Route::delete('/tryouts/{id}', [TryoutController::class , 'destroy']);
         Route::get('/tryouts/{id}/ranking', [\App\Http\Controllers\Api\RankingController::class , 'index']);
+        Route::get('/tryout-progress', [AdminTryoutProgressController::class , 'index']);
+        Route::get('/tryout-history', [AdminTryoutProgressController::class , 'history']);
+        Route::get('/tryout-registrations/pending', [AdminTryoutRegistrationController::class , 'pending']);
+        Route::get('/tryout-registrations/summary', [AdminTryoutRegistrationController::class , 'summary']);
+        Route::get('/tryouts/{id}/participants', [AdminTryoutRegistrationController::class , 'participants']);
 
 
         /*
