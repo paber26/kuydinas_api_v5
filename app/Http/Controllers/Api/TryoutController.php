@@ -253,12 +253,7 @@ class TryoutController extends Controller
             ], 422);
         }
 
-        if ($registration->expires_at && Carbon::now()->greaterThan($registration->expires_at)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Masa berlaku tryout sudah habis. Silakan registrasi ulang.',
-            ], 422);
-        }
+
 
         $session = $this->resolveSessionForStart($user->id, $tryout->id);
 
