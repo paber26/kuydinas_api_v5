@@ -24,7 +24,9 @@ class RankingController extends Controller
 
         $rankingResults = Cache::remember("ranking_tryout_{$tryoutId}", 10, function () use ($tryoutId) {
             return $this->latestCompletedResultsQuery($tryoutId)
-                ->with('user:id,name,regency_name')
+                ->with(['user' => function($query) {
+                    $query->select('id', 'name', 'regency_name', 'image');
+                }])
                 ->select('tryout_results.*')
                 ->orderByDesc('score')
                 ->orderBy('user_id')
@@ -41,15 +43,21 @@ class RankingController extends Controller
                     'user_id' => (int) $result->user_id,
                     'rank' => $index + 1,
                     'name' => $result->user?->name ?? 'Peserta',
+                    'avatar' => $result->user?->image,
                     'region' => $result->user?->regency_name ?: '-',
                     'twk' => $categoryScores['TWK'],
                     'tiu' => $categoryScores['TIU'],
                     'tkp' => $categoryScores['TKP'],
-                    'total' => (int) ($result->score ?? 0),
+                    'total' => (int) ($categoryScores['TWK'] + $categoryScores['TIU'] + $categoryScores['TKP']),
                     'is_current_user' => (int) $result->user_id === $userId,
                 ];
             })
-            ->values();
+            ->sortByDesc('total')
+            ->values()
+            ->map(function ($row, $index) {
+                $row['rank'] = $index + 1;
+                return $row;
+            });
 
         $currentUserRow = $leaderboard->firstWhere('is_current_user', true);
 

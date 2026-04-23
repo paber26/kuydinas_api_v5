@@ -443,7 +443,7 @@ class TryoutController extends Controller
 
                 if ($userAnswer === strtoupper((string) $soal->correct_answer)) {
                     $correctAnswer++;
-                    $score++;
+                    $score += 5;
                 }
             } else {
                 $selected = collect(is_array($soal->options) ? $soal->options : [])
