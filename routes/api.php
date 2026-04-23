@@ -33,7 +33,7 @@ Route::get('/ping', function () {
 
 /*
  |--------------------------------------------------------------------------
- | USER AUTH
+ | USER AUTH Cukimai
  |--------------------------------------------------------------------------
  */
 
@@ -141,6 +141,16 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
     Route::get('/tryouts/{id}/ranking', [RankingController::class , 'index']);
 
     Route::get('/tryouts/{id}/my-rank', [RankingController::class , 'myRank']);
+
+    Route::get('/users/{id}/public-profile', [PublicProfileController::class, 'show']);
+
+    // Bundle routes (user)
+    Route::get('/bundles', [BundleController::class, 'index']);
+    Route::get('/bundles/{id}', [BundleController::class, 'show']);
+    Route::post('/bundles/{id}/purchase', [BundleController::class, 'purchase']);
+    Route::post('/bundles/{id}/sync', [BundleController::class, 'syncPayment']);
+    Route::get('/bundles/{id}/swap-candidates/{tryoutId}', [BundleController::class, 'swapCandidates']);
+    Route::post('/bundles/{id}/swap-tryout', [BundleController::class, 'swapTryout']);
 
 });
 
