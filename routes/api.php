@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\AdminTryoutRegistrationController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
+use App\Http\Controllers\Api\User\PublicProfileController;
 
 Route::get('/ping', function () {
     return response()->json([
@@ -138,6 +139,8 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
     Route::get('/tryouts/{id}/ranking', [RankingController::class , 'index']);
 
     Route::get('/tryouts/{id}/my-rank', [RankingController::class , 'myRank']);
+
+    Route::get('/users/{id}/public-profile', [PublicProfileController::class, 'show']);
 
 });
 
