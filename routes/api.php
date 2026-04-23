@@ -17,6 +17,8 @@ use App\Http\Controllers\Api\TopupPackageController;
 use App\Http\Controllers\Api\AdminUploadController;
 use App\Http\Controllers\Api\AdminTryoutProgressController;
 use App\Http\Controllers\Api\AdminTryoutRegistrationController;
+use App\Http\Controllers\Api\AdminBundleController;
+use App\Http\Controllers\Api\BundleController;
 use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
@@ -139,6 +141,12 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
 
     Route::get('/tryouts/{id}/my-rank', [RankingController::class , 'myRank']);
 
+    // Bundle routes (user)
+    Route::get('/bundles', [BundleController::class, 'index']);
+    Route::get('/bundles/{id}', [BundleController::class, 'show']);
+    Route::post('/bundles/{id}/purchase', [BundleController::class, 'purchase']);
+    Route::post('/bundles/{id}/sync', [BundleController::class, 'syncPayment']);
+
 });
 
 Route::post('/payments/midtrans/webhook', [PaymentController::class , 'midtransWebhook']);
@@ -204,5 +212,17 @@ Route::middleware(['auth:sanctum', 'admin'])
         Route::put('/tryouts/{id}/reorder', [TryoutController::class , 'reorder']);
 
         Route::post('/tryouts/{id}/publish', [TryoutController::class , 'publish']);
+
+        /*
+     |--------------------------------------------------------------------------
+     | BUNDLE MANAGEMENT
+     |--------------------------------------------------------------------------
+     */
+        Route::get('/bundles', [AdminBundleController::class, 'index']);
+        Route::post('/bundles', [AdminBundleController::class, 'store']);
+        Route::get('/bundles/{id}', [AdminBundleController::class, 'show']);
+        Route::put('/bundles/{id}', [AdminBundleController::class, 'update']);
+        Route::delete('/bundles/{id}', [AdminBundleController::class, 'destroy']);
+        Route::get('/bundles/{id}/transactions', [AdminBundleController::class, 'transactions']);
 
     });
