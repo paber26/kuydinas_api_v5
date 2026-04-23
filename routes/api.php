@@ -146,6 +146,8 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
     Route::get('/bundles/{id}', [BundleController::class, 'show']);
     Route::post('/bundles/{id}/purchase', [BundleController::class, 'purchase']);
     Route::post('/bundles/{id}/sync', [BundleController::class, 'syncPayment']);
+    Route::get('/bundles/{id}/swap-candidates/{tryoutId}', [BundleController::class, 'swapCandidates']);
+    Route::post('/bundles/{id}/swap-tryout', [BundleController::class, 'swapTryout']);
 
 });
 

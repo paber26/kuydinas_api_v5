@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Bundle;
 use App\Models\BundleTransaction;
+use App\Models\BundleTryoutSwap;
 use App\Models\TryoutRegistration;
 use App\Services\MidtransSnapService;
 use Illuminate\Http\Request;
@@ -95,6 +96,52 @@ class BundleController extends Controller
             ->pluck('tryout_id')
             ->toArray();
 
+        // Cek swap yang sudah dilakukan user untuk bundle ini
+        $swaps = BundleTryoutSwap::where('user_id', $user->id)
+            ->where('bundle_id', $bundle->id)
+            ->get()
+            ->keyBy('original_tryout_id');
+
+        // Bangun daftar tryout efektif (original diganti replacement jika ada swap)
+        $effectiveTryouts = $bundle->tryouts->map(function ($t) use ($registeredTryoutIds, $swaps, $user) {
+            $swap = $swaps->get($t->id);
+
+            if ($swap) {
+                // Tryout ini sudah di-swap, tampilkan replacement
+                $replacement = $swap->replacementTryout;
+                $replacementRegistered = TryoutRegistration::where('user_id', $user->id)
+                    ->where('tryout_id', $swap->replacement_tryout_id)
+                    ->exists();
+
+                return [
+                    'id'                 => $replacement->id,
+                    'title'              => $replacement->title,
+                    'duration'           => (int) $replacement->duration,
+                    'type'               => $replacement->type,
+                    'question_count'     => (int) ($replacement->twk_target ?? 0)
+                        + (int) ($replacement->tiu_target ?? 0)
+                        + (int) ($replacement->tkp_target ?? 0),
+                    'already_registered' => $replacementRegistered,
+                    'swapped_from'       => [
+                        'id'    => $t->id,
+                        'title' => $t->title,
+                    ],
+                ];
+            }
+
+            return [
+                'id'             => $t->id,
+                'title'          => $t->title,
+                'duration'       => (int) $t->duration,
+                'type'           => $t->type,
+                'question_count' => (int) ($t->twk_target ?? 0)
+                    + (int) ($t->tiu_target ?? 0)
+                    + (int) ($t->tkp_target ?? 0),
+                'already_registered' => in_array($t->id, $registeredTryoutIds),
+                'swapped_from'       => null,
+            ];
+        });
+
         return response()->json([
             'status' => true,
             'data' => [
@@ -112,16 +159,7 @@ class BundleController extends Controller
                 'remaining_quota' => $bundle->limit_type === 'quota' && $bundle->limit_quota
                     ? max(0, $bundle->limit_quota - $bundle->purchasedCount())
                     : null,
-                'tryouts' => $bundle->tryouts->map(fn ($t) => [
-                    'id' => $t->id,
-                    'title' => $t->title,
-                    'duration' => (int) $t->duration,
-                    'type' => $t->type,
-                    'question_count' => (int) ($t->twk_target ?? 0)
-                        + (int) ($t->tiu_target ?? 0)
-                        + (int) ($t->tkp_target ?? 0),
-                    'already_registered' => in_array($t->id, $registeredTryoutIds),
-                ]),
+                'tryouts' => $effectiveTryouts->values(),
             ],
         ]);
     }
@@ -342,6 +380,167 @@ class BundleController extends Controller
     }
 
     /**
+     * Ambil daftar tryout kandidat pengganti untuk swap.
+     * Mencari tryout publish bertipe sama yang belum terdaftar user,
+     * tidak harus dalam bundle yang sama.
+     */
+    public function swapCandidates(Request $request, $id, $tryoutId)
+    {
+        $user   = $request->user();
+        $bundle = Bundle::with('tryouts')->findOrFail($id);
+
+        // Pastikan tryout ada dalam bundle
+        $sourceTryout = $bundle->tryouts->firstWhere('id', $tryoutId);
+        if (!$sourceTryout) {
+            return response()->json(['status' => false, 'message' => 'Tryout tidak ada dalam bundle ini.'], 422);
+        }
+
+        // Pastikan user sudah terdaftar di tryout ini
+        $isRegistered = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $tryoutId)
+            ->exists();
+
+        if (!$isRegistered) {
+            return response()->json(['status' => false, 'message' => 'Kamu belum terdaftar di tryout ini.'], 422);
+        }
+
+        // Ambil semua tryout_id yang sudah terdaftar user
+        $registeredIds = TryoutRegistration::where('user_id', $user->id)
+            ->pluck('tryout_id')
+            ->toArray();
+
+        // Cari tryout publish bertipe sama, belum terdaftar user, bukan tryout itu sendiri
+        $candidates = \App\Models\Tryout::where('status', 'publish')
+            ->where('type', $sourceTryout->type)
+            ->whereNotIn('id', $registeredIds)
+            ->where('id', '!=', $tryoutId)
+            ->get()
+            ->map(fn ($t) => [
+                'id'             => $t->id,
+                'title'          => $t->title,
+                'type'           => $t->type,
+                'duration'       => (int) $t->duration,
+                'question_count' => (int) ($t->twk_target ?? 0) + (int) ($t->tiu_target ?? 0) + (int) ($t->tkp_target ?? 0),
+            ]);
+
+        return response()->json([
+            'status' => true,
+            'data'   => [
+                'source'     => [
+                    'id'    => $sourceTryout->id,
+                    'title' => $sourceTryout->title,
+                    'type'  => $sourceTryout->type,
+                ],
+                'candidates' => $candidates,
+            ],
+        ]);
+    }
+
+    /**
+     * User memilih tryout pengganti dari bundle untuk slot yang sudah terdaftar.
+     * Tryout lama TETAP terdaftar, hanya mendaftarkan tryout baru yang dipilih.
+     * Tipe tryout pengganti harus sama dengan tryout yang sudah terdaftar.
+     */
+    public function swapTryout(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'from_tryout_id' => 'required|integer|exists:tryouts,id',
+            'to_tryout_id'   => 'required|integer|exists:tryouts,id|different:from_tryout_id',
+        ]);
+
+        $user   = $request->user();
+        $bundle = Bundle::with('tryouts')->findOrFail($id);
+        $bundleTryoutIds = $bundle->tryouts->pluck('id')->toArray();
+
+        // from_tryout harus ada dalam bundle
+        if (!in_array($validated['from_tryout_id'], $bundleTryoutIds)) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Tryout asal tidak ada dalam bundle ini.',
+            ], 422);
+        }
+
+        $fromTryout = $bundle->tryouts->firstWhere('id', $validated['from_tryout_id']);
+
+        // to_tryout harus publish dan tipe sama
+        $toTryout = \App\Models\Tryout::where('status', 'publish')
+            ->where('id', $validated['to_tryout_id'])
+            ->first();
+
+        if (!$toTryout) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Tryout tujuan tidak ditemukan atau belum publish.',
+            ], 422);
+        }
+
+        // Tipe harus sama
+        if ($fromTryout->type !== $toTryout->type) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Tryout pengganti harus bertipe sama (' . $fromTryout->type . ').',
+            ], 422);
+        }
+
+        // from_tryout harus sudah terdaftar user
+        $fromRegistered = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $validated['from_tryout_id'])
+            ->exists();
+
+        if (!$fromRegistered) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Tryout asal belum terdaftar di akunmu.',
+            ], 422);
+        }
+
+        // to_tryout tidak boleh sudah terdaftar
+        $toAlreadyRegistered = TryoutRegistration::where('user_id', $user->id)
+            ->where('tryout_id', $validated['to_tryout_id'])
+            ->exists();
+
+        if ($toAlreadyRegistered) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'Tryout tujuan sudah terdaftar di akunmu.',
+            ], 422);
+        }
+
+        // Daftarkan tryout baru — tryout lama TETAP terdaftar di akun user
+        DB::transaction(function () use ($user, $bundle, $validated) {
+            // Simpan record swap (upsert jika sudah pernah swap tryout yang sama)
+            BundleTryoutSwap::updateOrCreate(
+                [
+                    'user_id'            => $user->id,
+                    'bundle_id'          => $bundle->id,
+                    'original_tryout_id' => $validated['from_tryout_id'],
+                ],
+                [
+                    'replacement_tryout_id' => $validated['to_tryout_id'],
+                ]
+            );
+
+            // Daftarkan tryout pengganti ke akun user
+            TryoutRegistration::firstOrCreate(
+                ['user_id' => $user->id, 'tryout_id' => $validated['to_tryout_id']],
+                ['status' => 'registered', 'registered_at' => now()]
+            );
+
+            Log::info('Bundle tryout swapped.', [
+                'user_id'        => $user->id,
+                'bundle_id'      => $bundle->id,
+                'from_tryout_id' => $validated['from_tryout_id'],
+                'to_tryout_id'   => $validated['to_tryout_id'],
+            ]);
+        });
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'Tryout berhasil diganti. Tryout lama tetap terdaftar di akunmu.',
+        ]);
+    }
+
+    /**
      * Register semua tryout di bundle untuk user.
      */
     public static function registerBundleTryouts(BundleTransaction $transaction): void
@@ -352,25 +551,36 @@ class BundleController extends Controller
             return;
         }
 
+        // Ambil swap yang sudah dilakukan user untuk bundle ini
+        $swaps = BundleTryoutSwap::where('user_id', $transaction->user_id)
+            ->where('bundle_id', $bundle->id)
+            ->get()
+            ->keyBy('original_tryout_id');
+
         foreach ($bundle->tryouts as $tryout) {
+            // Cek apakah tryout ini sudah di-swap user
+            $swap = $swaps->get($tryout->id);
+            $targetTryoutId = $swap ? $swap->replacement_tryout_id : $tryout->id;
+
             $alreadyRegistered = TryoutRegistration::where('user_id', $transaction->user_id)
-                ->where('tryout_id', $tryout->id)
+                ->where('tryout_id', $targetTryoutId)
                 ->exists();
 
             if (!$alreadyRegistered) {
                 TryoutRegistration::create([
-                    'user_id' => $transaction->user_id,
-                    'tryout_id' => $tryout->id,
-                    'status' => 'registered',
+                    'user_id'       => $transaction->user_id,
+                    'tryout_id'     => $targetTryoutId,
+                    'status'        => 'registered',
                     'registered_at' => now(),
-                    // expires_at sengaja tidak diisi — bebas dikerjakan kapan saja
                 ]);
 
                 Log::info('Bundle tryout registered.', [
-                    'user_id' => $transaction->user_id,
-                    'tryout_id' => $tryout->id,
-                    'bundle_id' => $bundle->id,
-                    'order_id' => $transaction->order_id,
+                    'user_id'      => $transaction->user_id,
+                    'tryout_id'    => $targetTryoutId,
+                    'original_id'  => $tryout->id,
+                    'was_swapped'  => $swap !== null,
+                    'bundle_id'    => $bundle->id,
+                    'order_id'     => $transaction->order_id,
                 ]);
             }
         }
