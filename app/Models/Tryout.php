@@ -44,4 +44,9 @@ class Tryout extends Model
     {
         return $this->hasMany(TryoutRegistration::class);
     }
+
+    public function bundles()
+    {
+        return $this->belongsToMany(Bundle::class, 'bundle_tryout')->withTimestamps();
+    }
 }

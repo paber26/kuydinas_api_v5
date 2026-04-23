@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BundleTransaction;
 use App\Models\TopupTransaction;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -75,6 +76,11 @@ class PaymentController extends Controller
                 'status' => false,
                 'message' => 'Signature Midtrans tidak valid.',
             ], 403);
+        }
+
+        // Route berdasarkan prefix order_id
+        if (str_starts_with($orderId, 'BUNDLE-')) {
+            return $this->handleBundleWebhook($payload, $payloadJson, $orderId, $grossAmount, $transactionStatus, $fraudStatus);
         }
 
         try {
@@ -262,6 +268,101 @@ class PaymentController extends Controller
             'expire' => 'expired',
             default => $currentStatus,
         };
+    }
+
+    /**
+     * Handle webhook untuk transaksi Bundle.
+     */
+    private function handleBundleWebhook(array $payload, string $payloadJson, string $orderId, string $grossAmount, string $transactionStatus, string $fraudStatus)
+    {
+        try {
+            $result = DB::transaction(function () use ($payload, $payloadJson, $orderId, $grossAmount, $transactionStatus, $fraudStatus) {
+                Log::info('Processing Midtrans BUNDLE webhook.', [
+                    'order_id' => $orderId,
+                    'transaction_status' => $transactionStatus,
+                ]);
+
+                $bundleTrx = BundleTransaction::where('order_id', $orderId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$bundleTrx) {
+                    Log::warning('Bundle webhook order_id not found.', ['order_id' => $orderId]);
+                    throw new HttpResponseException(response()->json([
+                        'status' => false,
+                        'message' => 'Transaksi bundle tidak ditemukan.',
+                    ], 404));
+                }
+
+                if ((int) $bundleTrx->gross_amount !== (int) $grossAmount) {
+                    Log::warning('Bundle webhook amount mismatch.', [
+                        'order_id' => $orderId,
+                        'expected' => (int) $bundleTrx->gross_amount,
+                        'received' => $grossAmount,
+                    ]);
+                    throw new HttpResponseException(response()->json([
+                        'status' => false,
+                        'message' => 'Nominal tidak sesuai.',
+                    ], 422));
+                }
+
+                $isSuccess = $this->isSuccessfulPaymentStatus($transactionStatus, $fraudStatus);
+                $mappedStatus = $this->mapLocalTopupStatus($transactionStatus, $fraudStatus, $bundleTrx->status);
+                $alreadyPaid = $bundleTrx->status === 'paid';
+
+                if ($alreadyPaid && !$isSuccess) {
+                    $mappedStatus = $bundleTrx->status;
+                }
+
+                $bundleTrx->update([
+                    'status' => $mappedStatus,
+                    'transaction_status' => $transactionStatus,
+                    'fraud_status' => $fraudStatus ?: $bundleTrx->fraud_status,
+                    'payment_type' => $payload['payment_type'] ?? $bundleTrx->payment_type,
+                    'raw_notification' => $payloadJson !== '' ? json_decode($payloadJson, true) : null,
+                    'paid_at' => $isSuccess ? ($bundleTrx->paid_at ?? now()) : $bundleTrx->paid_at,
+                    'expired_at' => $transactionStatus === 'expire' ? now() : $bundleTrx->expired_at,
+                ]);
+
+                if ($isSuccess && !$alreadyPaid) {
+                    BundleController::registerBundleTryouts($bundleTrx);
+
+                    Log::info('Bundle webhook: tryouts registered.', [
+                        'order_id' => $orderId,
+                        'bundle_id' => $bundleTrx->bundle_id,
+                        'user_id' => $bundleTrx->user_id,
+                    ]);
+                }
+
+                return [
+                    'registered' => $isSuccess && !$alreadyPaid,
+                    'local_status' => $bundleTrx->status,
+                ];
+            });
+        } catch (HttpResponseException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            Log::error('Bundle webhook failed.', [
+                'order_id' => $orderId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Webhook bundle gagal diproses.',
+            ], 500);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Webhook bundle berhasil diproses.',
+            'data' => [
+                'order_id' => $orderId,
+                'transaction_status' => $transactionStatus,
+                'local_status' => $result['local_status'] ?? null,
+                'registered' => (bool) ($result['registered'] ?? false),
+            ],
+        ]);
     }
 
     private function safeJsonEncode(mixed $value): string
