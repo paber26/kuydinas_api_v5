@@ -9,10 +9,14 @@ return [
     'allowed_origins' => array_values(array_filter(array_unique([
         env('FRONTEND_URL'),
         env('ADMIN_FRONTEND_URL'),
+        'https://kuydinasclientv5.vercel.app',
+        'https://kuydinas-admin-v5-five.vercel.app',
         'http://127.0.0.1:5173',
         'http://127.0.0.1:5174',
-        'https://lms.next-level-study.com',
-        'https://kuylms.next-level-study.com',
+        'https://kuydinas.id',
+        'https://kuymin.kuydinas.id',
+        'https://tryout.kuydinas.id',
+        'https://kuydinas-client-v5.vercel.app/',
     ]), fn ($origin) => filled($origin))),
 
     'allowed_origins_patterns' => [

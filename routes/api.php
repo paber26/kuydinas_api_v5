@@ -23,6 +23,8 @@ use App\Http\Controllers\Api\User\UserAuthController;
 use App\Http\Controllers\Api\User\GoogleAuthController;
 use App\Http\Controllers\Api\User\TryoutController as UserTryoutController;
 use App\Http\Controllers\Api\User\PublicProfileController;
+use App\Http\Controllers\Api\PublicTryoutController;
+use App\Http\Controllers\Api\PublicStatsController;
 
 Route::get('/ping', function () {
     return response()->json([
@@ -155,6 +157,17 @@ Route::middleware(['auth:sanctum', 'user'])->group(function () {
 });
 
 Route::post('/payments/midtrans/webhook', [PaymentController::class , 'midtransWebhook']);
+
+/*
+ |--------------------------------------------------------------------------
+ | PUBLIC ROUTES (no auth required)
+ |--------------------------------------------------------------------------
+ */
+
+Route::middleware('throttle:30,1')->group(function () {
+    Route::get('/public/tryouts', [PublicTryoutController::class, 'index']);
+    Route::get('/public/stats', [PublicStatsController::class, 'index']);
+});
 
 
 /*

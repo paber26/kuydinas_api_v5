@@ -27,22 +27,26 @@ return new class extends Migration
             }
         });
 
-        DB::statement("
-            UPDATE tryout_results tr
-            LEFT JOIN tryout_registrations reg
-                ON reg.user_id = tr.user_id
-                AND reg.tryout_id = tr.tryout_id
-            SET
-                tr.attempt_number = COALESCE(tr.attempt_number, 1),
-                tr.status = CASE
-                    WHEN reg.status = 'completed' THEN 'completed'
-                    ELSE 'in_progress'
-                END,
-                tr.finished_at = CASE
-                    WHEN reg.status = 'completed' THEN reg.finished_at
-                    ELSE NULL
-                END
-        ");
+        // SQLite does not support MySQL-style UPDATE with JOIN and table alias.
+        // Skip the data backfill on SQLite (used in testing); run it only on MySQL/MariaDB.
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("
+                UPDATE tryout_results tr
+                LEFT JOIN tryout_registrations reg
+                    ON reg.user_id = tr.user_id
+                    AND reg.tryout_id = tr.tryout_id
+                SET
+                    tr.attempt_number = COALESCE(tr.attempt_number, 1),
+                    tr.status = CASE
+                        WHEN reg.status = 'completed' THEN 'completed'
+                        ELSE 'in_progress'
+                    END,
+                    tr.finished_at = CASE
+                        WHEN reg.status = 'completed' THEN reg.finished_at
+                        ELSE NULL
+                    END
+            ");
+        }
 
         if ($this->indexExists('tryout_results', 'tryout_results_user_id_tryout_id_unique')) {
             Schema::table('tryout_results', function (Blueprint $table) {
@@ -92,6 +96,17 @@ return new class extends Migration
 
     private function indexExists(string $table, string $indexName): bool
     {
+        // SQLite does not have information_schema; use Schema::getIndexes() instead.
+        if (DB::getDriverName() === 'sqlite') {
+            $indexes = Schema::getIndexes($table);
+            foreach ($indexes as $index) {
+                if ($index['name'] === $indexName) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         $database = DB::getDatabaseName();
 
         return DB::table('information_schema.statistics')

@@ -53,6 +53,17 @@ return new class extends Migration
 
     private function indexExists(string $table, string $indexName): bool
     {
+        // SQLite does not have information_schema; use Schema::getIndexes() instead.
+        if (DB::getDriverName() === 'sqlite') {
+            $indexes = Schema::getIndexes($table);
+            foreach ($indexes as $index) {
+                if ($index['name'] === $indexName) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         $database = DB::getDatabaseName();
 
         return DB::table('information_schema.statistics')

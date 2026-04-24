@@ -12,6 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // SQLite does not support MODIFY COLUMN / ENUM; skip on SQLite.
+        // The column was created with the correct type in the original migration.
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE tryouts MODIFY COLUMN type ENUM('free', 'premium', 'regular') NOT NULL DEFAULT 'free'");
     }
 
@@ -20,6 +26,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::statement("ALTER TABLE tryouts MODIFY COLUMN type ENUM('free', 'premium') NOT NULL DEFAULT 'free'");
     }
 };
