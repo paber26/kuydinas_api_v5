@@ -194,6 +194,7 @@ Route::middleware(['auth:sanctum', 'admin'])
 
         Route::get('/users/active-count', [AdminUserController::class , 'activeCount']);
         Route::get('/users/count', [AdminUserController::class , 'totalCount']);
+        Route::get('/users/daily-registrations', [AdminUserController::class , 'dailyRegistrations']);
         Route::get('/users/location-stats', [AdminUserController::class , 'locationStats']);
         Route::get('/topup-transactions/summary', [AdminTopupTransactionController::class , 'summary']);
         Route::get('/users', [AdminUserController::class , 'index']);

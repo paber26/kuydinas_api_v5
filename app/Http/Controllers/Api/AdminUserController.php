@@ -63,6 +63,38 @@ class AdminUserController extends Controller
         ]);
     }
 
+    public function dailyRegistrations(Request $request): JsonResponse
+    {
+        // Default: 30 hari terakhir. Bisa di-override dengan ?days=N (max 365)
+        $days = min((int) ($request->input('days', 30)), 365);
+
+        $from = Carbon::now()->subDays($days - 1)->startOfDay();
+
+        $rows = User::query()
+            ->selectRaw('DATE(created_at) as tanggal, COUNT(*) as total')
+            ->where('created_at', '>=', $from)
+            ->groupByRaw('DATE(created_at)')
+            ->orderBy('tanggal')
+            ->get();
+
+        // Isi hari yang tidak ada data dengan 0 agar grafik tidak bolong
+        $byDate = $rows->keyBy('tanggal');
+        $data = [];
+        for ($i = 0; $i < $days; $i++) {
+            $date = Carbon::now()->subDays($days - 1 - $i)->toDateString();
+            $data[] = [
+                'tanggal' => $date,
+                'label'   => Carbon::parse($date)->translatedFormat('d M'),
+                'total'   => (int) ($byDate[$date]->total ?? 0),
+            ];
+        }
+
+        return response()->json([
+            'status' => true,
+            'data'   => $data,
+        ]);
+    }
+
     public function update(Request $request, $id)
     {
         $data = $request->validate([
