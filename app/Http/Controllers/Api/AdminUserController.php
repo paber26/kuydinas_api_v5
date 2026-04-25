@@ -82,6 +82,81 @@ class AdminUserController extends Controller
         ]);
     }
 
+    public function locationStats(Request $request): JsonResponse
+    {
+        $provinceName = $request->input('province_name');
+
+        if ($provinceName !== null && $provinceName !== '') {
+            $rows = User::query()
+                ->where('province_name', $provinceName)
+                ->selectRaw('regency_name, COUNT(*) as count')
+                ->groupBy('regency_name')
+                ->orderByDesc('count')
+                ->get();
+
+            $countsByLabel = [];
+
+            foreach ($rows as $row) {
+                $label = ($row->regency_name === null || $row->regency_name === '')
+                    ? 'Tidak Diketahui'
+                    : (string) $row->regency_name;
+
+                $countsByLabel[$label] = ($countsByLabel[$label] ?? 0) + (int) $row->count;
+            }
+
+            $data = collect($countsByLabel)
+                ->map(fn ($count, $label) => [
+                    'regency_name' => (string) $label,
+                    'count'        => (int) $count,
+                ])
+                ->sortByDesc('count')
+                ->values();
+
+            $known = $data->filter(fn ($r) => $r['regency_name'] !== 'Tidak Diketahui')->values();
+            $unknown = $data->filter(fn ($r) => $r['regency_name'] === 'Tidak Diketahui')->values();
+
+            return response()->json([
+                'status'        => true,
+                'data'          => $known->concat($unknown)->values(),
+                'province_name' => $provinceName,
+            ]);
+        }
+
+        $rows = User::query()
+            ->selectRaw('province_name, COUNT(*) as count')
+            ->groupBy('province_name')
+            ->orderByDesc('count')
+            ->get();
+
+        $countsByLabel = [];
+
+        foreach ($rows as $row) {
+            $label = ($row->province_name === null || $row->province_name === '')
+                ? 'Tidak Diketahui'
+                : (string) $row->province_name;
+
+            $countsByLabel[$label] = ($countsByLabel[$label] ?? 0) + (int) $row->count;
+        }
+
+        $data = collect($countsByLabel)
+            ->map(fn ($count, $label) => [
+                'province_name' => (string) $label,
+                'count'         => (int) $count,
+            ])
+            ->sortByDesc('count')
+            ->values();
+
+        $known = $data->filter(fn ($r) => $r['province_name'] !== 'Tidak Diketahui')->values();
+        $unknown = $data->filter(fn ($r) => $r['province_name'] === 'Tidak Diketahui')->values();
+
+        return response()->json([
+            'status' => true,
+            'data'   => $known->concat($unknown)->values(),
+            'total'  => (int) collect($countsByLabel)->sum(),
+        ]);
+    }
+
+
     public function tryoutSummary(int $id): JsonResponse
     {
         $user = User::query()->findOrFail($id);
